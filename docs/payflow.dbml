@@ -1,0 +1,95 @@
+Project payflow {
+  database_type: 'PostgreSQL'
+  Note: 'PayFlow MVP database schema. Monetary values are stored as BIGINT minor units.'
+}
+
+Enum account_currency {
+  PLN [note: 'Polish zloty; the only supported currency in the MVP']
+}
+
+Enum transfer_status {
+  completed [note: 'The transfer was completed atomically']
+}
+
+Enum ledger_operation_type {
+  deposit [note: 'Money added to an account']
+  withdrawal [note: 'Money removed from an account']
+  transfer [note: 'Money moved between two accounts']
+}
+
+Enum ledger_entry_type {
+  credit [note: 'Increases the account balance']
+  debit [note: 'Decreases the account balance']
+}
+
+Table users {
+  id bigint [pk, increment, not null]
+  email text [not null, unique, note: 'Normalized lowercase email address']
+  password_hash text [not null, note: 'Bcrypt hash; plaintext passwords must never be stored']
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: 'A person using the PayFlow API.'
+}
+
+Table accounts {
+  id bigint [pk, increment, not null]
+  user_id bigint [not null]
+  currency account_currency [not null, default: 'PLN']
+  balance_minor bigint [not null, default: 0, note: 'Current balance in minor units']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, currency) [unique, name: 'uq_accounts_user_currency']
+    user_id [name: 'idx_accounts_user_id']
+  }
+
+  Note: 'A wallet account belonging to one user and one currency.'
+}
+
+Table transfers {
+  id bigint [pk, increment, not null]
+  idempotency_key text [not null, unique, note: 'Prevents duplicate processing']
+  source_account_id bigint [not null]
+  destination_account_id bigint [not null]
+  amount_minor bigint [not null, note: 'Positive amount in minor currency units']
+  status transfer_status [not null, default: 'completed']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (source_account_id, created_at) [name: 'idx_transfers_source_created_at']
+    (destination_account_id, created_at) [name: 'idx_transfers_destination_created_at']
+  }
+
+  Note: 'A synchronous atomic transfer between two different accounts.'
+}
+
+Table ledger_entries {
+  id bigint [pk, increment, not null]
+  transfer_id bigint [null, note: 'Nullable for deposits and withdrawals']
+  account_id bigint [not null]
+  operation_type ledger_operation_type [not null]
+  entry_type ledger_entry_type [not null]
+  amount_minor bigint [not null, note: 'Always positive; direction is represented by entry_type']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (account_id, created_at) [name: 'idx_ledger_entries_account_created_at']
+    transfer_id [name: 'idx_ledger_entries_transfer_id']
+  }
+
+  Note: 'Immutable history of account balance movements.'
+}
+
+Ref fk_accounts_user: accounts.user_id > users.id
+Ref fk_transfers_source_account: transfers.source_account_id > accounts.id
+Ref fk_transfers_destination_account: transfers.destination_account_id > accounts.id
+Ref fk_ledger_entries_transfer: ledger_entries.transfer_id > transfers.id
+Ref fk_ledger_entries_account: ledger_entries.account_id > accounts.id
+
+// Implement these rules as PostgreSQL CHECK constraints in migrations:
+// accounts.balance_minor >= 0
+// transfers.amount_minor > 0
+// transfers.source_account_id <> transfers.destination_account_id
+// ledger_entries.amount_minor > 0
+// operation_type = 'transfer' requires transfer_id IS NOT NULL
+// operation_type IN ('deposit', 'withdrawal') requires transfer_id IS NULL
