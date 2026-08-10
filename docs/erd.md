@@ -61,6 +61,8 @@ erDiagram
     }
 ```
 
+The diagram shows the possible foreign-key relationships. The business rule requires exactly two ledger entries for every completed transfer. This rule is enforced by the service layer and integration tests in the MVP.
+
 ## 3. Tables
 
 ### 3.1 `users`
@@ -137,7 +139,7 @@ CREATE TABLE accounts (
 
 ### 3.3 `transfers`
 
-Stores successful or attempted money transfers between two accounts.
+Stores successfully completed money transfers between two accounts.
 
 For the initial synchronous MVP, a transfer is completed inside one database transaction.
 
@@ -288,7 +290,7 @@ These rules can later be strengthened with a database trigger if the project nee
 | `accounts` → `transfers.source_account_id` | one-to-many | One account can send many transfers |
 | `accounts` → `transfers.destination_account_id` | one-to-many | One account can receive many transfers |
 | `accounts` → `ledger_entries` | one-to-many | One account has many balance movement records |
-| `transfers` → `ledger_entries` | one-to-many | One transfer produces two ledger entries |
+| `transfers` → `ledger_entries` | one-to-many | One transfer produces exactly two ledger entries as a business rule |
 
 ## 5. Monetary and consistency rules
 
