@@ -1,7 +1,37 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"log"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/reggae-krk/payflow/internal/config"
+)
 
 func main() {
-	fmt.Println("PayFlow API starting...")
+	cfg := config.Load()
+
+	pool, err := pgxpool.New(context.Background(), cfg.ConnString())
+
+	if err != nil {
+		log.Fatalf("unable to connect to database: %v", err)
+	}
+
+	defer pool.Close()
+	router := gin.Default()
+
+	router.GET("/health", func(c *gin.Context) {
+		if err := pool.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "db unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	log.Println("PayFlow API listening on :8080")
+	if err := router.Run(":8080"); err != nil {
+		log.Fatalf("server failed: %v", err)
+	}
 }
