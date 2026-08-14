@@ -16,7 +16,7 @@ const FirstUserChangedEmail string = "first-changed@user.com"
 type UserRepoTestSuite struct {
 	suite.Suite
 	pgContainer *testhelpers.PostgresContainer
-	repository  *UserRepository
+	repository  *userRepository
 	ctx         context.Context
 }
 

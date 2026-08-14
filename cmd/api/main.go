@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/config"
+	"github.com/reggae-krk/payflow/internal/users"
 )
 
 func main() {
 	cfg := config.Load()
-
 	pool, err := pgxpool.New(context.Background(), cfg.ConnString())
 
 	if err != nil {
@@ -20,16 +20,19 @@ func main() {
 	}
 
 	defer pool.Close()
-	router := gin.Default()
 
-	router.GET("/health", func(c *gin.Context) {
+	usersRepo := users.NewUserRepository(pool)
+	usersService := users.NewService(usersRepo)
+	usersHandler := users.NewHandler(usersService)
+	
+	router := SetupRouter(usersHandler, func(c *gin.Context) {
 		if err := pool.Ping(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "db unavailable"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-
+	
 	log.Println("PayFlow API listening on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("server failed: %v", err)

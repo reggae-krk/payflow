@@ -1,6 +1,7 @@
 services:
     postgres:
         image: postgres:16-alpine
+        pull_policy: missing
         container_name: payflow-db
         environment:
             POSTGRES_USER: payflow
