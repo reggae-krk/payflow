@@ -19,6 +19,11 @@ func (h *fakeUserHandler) Register(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *fakeUserHandler) Login(c *gin.Context) {
+    h.registerCalled = true
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func fakeHealthHandler(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -42,6 +47,20 @@ func TestRoutesRegisterEndpoint(t *testing.T) {
     responseRecorder := httptest.NewRecorder()
     body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
     req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+    req.Header.Set("Content-Type", "application/json")
+    router.ServeHTTP(responseRecorder, req)
+
+    assert.Equal(t, http.StatusOK, responseRecorder.Code)
+    assert.True(t, fh.registerCalled)
+}
+
+func TestRoutesLoginEndpoint(t *testing.T) {
+    fh := &fakeUserHandler{}
+    router := SetupRouter(fh, fakeHealthHandler)
+
+    responseRecorder := httptest.NewRecorder()
+    body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
+    req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
     req.Header.Set("Content-Type", "application/json")
     router.ServeHTTP(responseRecorder, req)
 

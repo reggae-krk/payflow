@@ -48,10 +48,10 @@ func TestServiceRegisterNotValidUser(t *testing.T) {
     }
 
     user, err = service.Register(context.Background(), "test@example.com", "StrongP@ss1")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
+
     assert.Equal(t, err, ErrEmailTaken)
 }
 
@@ -60,10 +60,10 @@ func TestServiceRegisterNotValidEmail(t *testing.T) {
     service := NewService(repo)
 
     _, err := service.Register(context.Background(), "invalid-email", "StrongP@ss1")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
+
     assert.Equal(t, err.Error(), "invalid email address")
 }
 
@@ -73,51 +73,74 @@ func TestServiceRegisterNotValidPassword(t *testing.T) {
     email := "test@example.com"
     
     _, err := service.Register(context.Background(), email, "weak")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password is too short", err.Error())
 
     _, err = service.Register(context.Background(), email, "")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password cannot be empty or contain only spaces", err.Error())
 
     _, err = service.Register(context.Background(), email, "   ")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password cannot be empty or contain only spaces", err.Error())
 
     _, err = service.Register(context.Background(), email, "verylongpasswordthatexceedsthirtytwocharacters")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password is too long", err.Error())
 
     _, err = service.Register(context.Background(), email, "passwithoutdigit")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password must contain at least 1 digit", err.Error())
 
     _, err = service.Register(context.Background(), email, "passwithoutuppercase1")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password must contain at least 1 uppercase letter", err.Error())
 
     _, err = service.Register(context.Background(), email, "Passwithoutspecial1")
-
     if err == nil {
         t.Fatal("expected error, got nil")
     }
     assert.Equal(t, "password must contain at least 1 special character", err.Error())
+}
+
+func TestServiceLoginValidUser(t *testing.T) {
+    repo := NewFakeUserRepository()
+    service := NewService(repo)
+
+    _, err := service.Register(context.Background(), "test@example.com", "StrongP@ss1")
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+
+    _, err = service.Login(context.Background(), "test@example.com", "StrongP@ss1")
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+}
+
+func TestServiceLoginInvalidUser(t *testing.T) {
+    repo := NewFakeUserRepository()
+    service := NewService(repo)
+
+    _, err := service.Register(context.Background(), "test@example.com", "StrongP@ss1")
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+
+    _, err = service.Login(context.Background(), "test@example.com", "WrongP@ss1")
+    if err == nil {
+        t.Fatal("expected error, got nil")
+    }
 }

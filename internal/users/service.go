@@ -3,12 +3,13 @@ package users
 import (
 	"context"
 	"errors"
-
-	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrInvalidCredentials = errors.New("invalid email or password")
 
 type UserService interface {
     Register(ctx context.Context, email, password string) (*User, error)
+    Login(ctx context.Context, email, password string) (*User, error)
 }
 
 type service struct {
@@ -37,7 +38,7 @@ func (s *service) Register(ctx context.Context, email, password string) (*User, 
 		return nil, ErrEmailTaken
 	}
 
-	hashedPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPass, err := HashPass(password)
 
 	if err != nil {
 		return nil, err
@@ -49,4 +50,18 @@ func (s *service) Register(ctx context.Context, email, password string) (*User, 
 		return nil, err
 	}
 	return user, nil
+}
+
+func (s *service) Login(ctx context.Context, email, password string) (*User, error) {
+	existing, err := s.repo.GetByEmail(ctx, email)
+
+	if err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	if !VerifyPassword(existing.PasswordHash, password) {
+		return nil, ErrInvalidCredentials
+	}
+
+	return existing, nil
 }
