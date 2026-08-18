@@ -13,6 +13,7 @@ import (
 )
 
 func TestRequireAuth(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-pass")
 	t.Run("no token - returns 401", func(t *testing.T) {
 		gin.SetMode(gin.TestMode)
 		w := httptest.NewRecorder()
@@ -87,6 +88,7 @@ func TestRequireAuth(t *testing.T) {
 }
 
 func TestVerifyToken(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-pass")
 	t.Run("valid token - returns user ID", func(t *testing.T) {
 		userID := int64(456)
 		token, err := GenerateToken(userID)

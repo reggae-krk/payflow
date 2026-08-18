@@ -4,6 +4,7 @@ import "testing"
 
 
 func TestGenerateAndVerifyToken(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-pass")
 	userId := int64(12345)
 	token, err := GenerateToken(userId)
 	if err != nil {
@@ -19,6 +20,7 @@ func TestGenerateAndVerifyToken(t *testing.T) {
 }
 
 func TestVerifyInvalidToken(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-pass")
 	invalidToken := "invalid.token.string"
 	_, err := VerifyToken(invalidToken)
 	if err == nil {

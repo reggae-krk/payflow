@@ -130,6 +130,7 @@ func TestHandlerRegisterInvalidJSON(t *testing.T) {
 }
 
 func TestHandlerLoginValidRequest(t *testing.T) {
+    t.Setenv("JWT_SECRET", "test-pass")
     fakeSvc := &fakeService{
         registerUser: &User{
             Id:    1,
