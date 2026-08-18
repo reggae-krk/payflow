@@ -14,6 +14,10 @@ type fakeUserHandler struct {
     registerCalled bool
 }
 
+type fakeAccountHandler struct {
+    createCalled bool
+}
+
 func (h *fakeUserHandler) Register(c *gin.Context) {
     h.registerCalled = true
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -24,13 +28,24 @@ func (h *fakeUserHandler) Login(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *fakeAccountHandler) CreateAccount(c *gin.Context) {
+    h.createCalled = true
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *fakeAccountHandler) GetBalance(c *gin.Context) {
+    h.createCalled = true
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func fakeHealthHandler(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func TestRoutesHealthEndpoint(t *testing.T) {
-    fh := &fakeUserHandler{}
-    router := SetupRouter(fh, fakeHealthHandler)
+    fu := &fakeUserHandler{}
+    fa := &fakeAccountHandler{}
+    router := SetupRouter(fu, fa, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -41,8 +56,9 @@ func TestRoutesHealthEndpoint(t *testing.T) {
 }
 
 func TestRoutesRegisterEndpoint(t *testing.T) {
-    fh := &fakeUserHandler{}
-    router := SetupRouter(fh, fakeHealthHandler)
+    fu := &fakeUserHandler{}
+    fa := &fakeAccountHandler{}
+    router := SetupRouter(fu, fa, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -51,12 +67,13 @@ func TestRoutesRegisterEndpoint(t *testing.T) {
     router.ServeHTTP(responseRecorder, req)
 
     assert.Equal(t, http.StatusOK, responseRecorder.Code)
-    assert.True(t, fh.registerCalled)
+    assert.True(t, fu.registerCalled)
 }
 
 func TestRoutesLoginEndpoint(t *testing.T) {
-    fh := &fakeUserHandler{}
-    router := SetupRouter(fh, fakeHealthHandler)
+    fu := &fakeUserHandler{}
+    fa := &fakeAccountHandler{}
+    router := SetupRouter(fu, fa, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -65,5 +82,5 @@ func TestRoutesLoginEndpoint(t *testing.T) {
     router.ServeHTTP(responseRecorder, req)
 
     assert.Equal(t, http.StatusOK, responseRecorder.Code)
-    assert.True(t, fh.registerCalled)
+    assert.True(t, fu.registerCalled)
 }

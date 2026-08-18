@@ -4,22 +4,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/reggae-krk/payflow/internal/auth"
 	"github.com/reggae-krk/payflow/internal/users"
+	"github.com/reggae-krk/payflow/internal/wallet"
 )
 
-func SetupRouter(userHandler users.UserHandler, healthHandler gin.HandlerFunc) *gin.Engine {
+func SetupRouter(userHandler users.UserHandler, accountHandler wallet.AccountHandler, healthHandler gin.HandlerFunc) *gin.Engine {
 	server := gin.Default()
 
 	server.GET("/health", healthHandler)
 
-	registerRoutes(server, userHandler)
+	registerRoutes(server, userHandler, accountHandler)
 
 	return server
 }
 
-func registerRoutes(server *gin.Engine, usersHandler users.UserHandler) {
+func registerRoutes(server *gin.Engine, usersHandler users.UserHandler, accountHandler wallet.AccountHandler) {
 	server.POST("/register", usersHandler.Register)
 	server.POST("/login", usersHandler.Login)
 
 	authGroup := server.Group("/")
 	authGroup.Use(auth.RequireAuth)
+
+	authGroup.POST("/accounts", accountHandler.CreateAccount)
+	authGroup.GET("/accounts/:accountId/balance", accountHandler.GetBalance)
 }

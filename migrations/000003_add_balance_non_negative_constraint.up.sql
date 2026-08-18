@@ -1,0 +1,1 @@
+ALTER TABLE accounts ADD CONSTRAINT balance_non_negative CHECK (balance_minor >= 0)

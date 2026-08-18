@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/config"
 	"github.com/reggae-krk/payflow/internal/users"
+	"github.com/reggae-krk/payflow/internal/wallet"
 )
 
 func main() {
@@ -24,8 +25,12 @@ func main() {
 	usersRepo := users.NewUserRepository(pool)
 	usersService := users.NewService(usersRepo)
 	usersHandler := users.NewHandler(usersService)
+
+	accountRepo := wallet.NewAccountRepository(pool)
+	accountService := wallet.NewService(accountRepo)
+	accountHandler := wallet.NewHandler(accountService)
 	
-	router := SetupRouter(usersHandler, func(c *gin.Context) {
+	router := SetupRouter(usersHandler, accountHandler, func(c *gin.Context) {
 		if err := pool.Ping(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "db unavailable"})
 			return
