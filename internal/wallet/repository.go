@@ -10,7 +10,6 @@ import (
 	"github.com/reggae-krk/payflow/internal/db"
 )
 
-var ErrInvalidCurrency = errors.New("invalid currency")
 var ErrNoRows = errors.New("no rows in result set")
 var ErrNoRowToUpdate = errors.New("no row found to update")
 var ErrInsufficientFunds = errors.New("insufficient funds")
@@ -57,7 +56,9 @@ func (accountRepo *accountRepository) GetByID(ctx context.Context, id int64) (*A
 	var account Account
 
 	query := `
-		SELECT id, email, password_hash, created_at FROM users WHERE id = $1
+		SELECT id, user_id, currency, balance_minor, created_at
+		FROM accounts
+		WHERE id = $1
 	`
 
 	err := accountRepo.db.QueryRow(ctx, query, id).Scan(

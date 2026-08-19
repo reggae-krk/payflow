@@ -1,7 +1,7 @@
 package users
 
 import (
-	"errors"
+	// "errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +9,6 @@ import (
 )
 
 type UserHandler interface {
-	Register(ctx *gin.Context)
 	Login(ctx *gin.Context)
 }
 
@@ -21,38 +20,13 @@ func NewHandler(service UserService) *handler {
 	return &handler{service: service}
 }
 
-type regLogRequest struct {
+type loginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 }
 
-func (h *handler) Register(ctx *gin.Context) {
-	var req regLogRequest
-
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	user, err := h.service.Register(ctx, req.Email, req.Password)
-
-	if err != nil {
-		if errors.Is(err, ErrEmailTaken) {
-			ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusCreated, gin.H{
-		"message": "User was successfully created",
-		"email":   user.Email,
-	})
-}
-
 func (h *handler) Login(ctx *gin.Context) {
-	var req regLogRequest
+	var req loginRequest
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
