@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/reggae-krk/payflow/internal/db"
 )
 
 var ErrEmailTaken = errors.New("email already registered")
@@ -24,11 +24,11 @@ type UserRepository interface {
 }
 
 type userRepository struct {
-	pool *pgxpool.Pool
+	db db.Querier
 }
 
-func NewUserRepository(pool *pgxpool.Pool) *userRepository {
-	return &userRepository{pool: pool}
+func NewUserRepository(database db.Querier) *userRepository {
+	return &userRepository{db: database}
 }
 
 func (userRepo *userRepository) CreateUser(ctx context.Context, email, passwordHash string) (*User, error) {
@@ -40,7 +40,7 @@ func (userRepo *userRepository) CreateUser(ctx context.Context, email, passwordH
 			RETURNING id, email, password_hash, created_at
 	`
 
-	err := userRepo.pool.QueryRow(ctx, query, email, passwordHash).Scan(&user.Id, &user.Email, &user.PasswordHash,
+	err := userRepo.db.QueryRow(ctx, query, email, passwordHash).Scan(&user.Id, &user.Email, &user.PasswordHash,
 		&user.CreatedAt)
 
 	if err != nil {
@@ -59,7 +59,7 @@ func (userRepo *userRepository) GetByID(ctx context.Context, id int64) (*User, e
 		SELECT id, email, password_hash, created_at FROM users WHERE id = $1
 	`
 
-	err := userRepo.pool.QueryRow(ctx, query, id).Scan(&user.Id, &user.Email, &user.PasswordHash,
+	err := userRepo.db.QueryRow(ctx, query, id).Scan(&user.Id, &user.Email, &user.PasswordHash,
 		&user.CreatedAt)
 
 	if err != nil {
@@ -78,7 +78,7 @@ func (userRepo *userRepository) GetByEmail(ctx context.Context, email string) (*
 		SELECT id, email, password_hash, created_at FROM users WHERE email = $1
 	`
 
-	err := userRepo.pool.QueryRow(ctx, query, email).Scan(&user.Id, &user.Email, &user.PasswordHash,
+	err := userRepo.db.QueryRow(ctx, query, email).Scan(&user.Id, &user.Email, &user.PasswordHash,
 		&user.CreatedAt)
 
 	if err != nil {
@@ -95,7 +95,7 @@ func (userRepo *userRepository) UpdatePassword(ctx context.Context, id int64, ne
 		UPDATE users SET password_hash = $1 WHERE id = $2
 	`
 
-	cmdTag, err := userRepo.pool.Exec(ctx, query, newPasswordHash, id)
+	cmdTag, err := userRepo.db.Exec(ctx, query, newPasswordHash, id)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (userRepo *userRepository) UpdateEmail(ctx context.Context, id int64, newEm
 		UPDATE users SET email = $1 WHERE id = $2
 	`
 
-	cmdTag, err := userRepo.pool.Exec(ctx, query, newEmail, id)
+	cmdTag, err := userRepo.db.Exec(ctx, query, newEmail, id)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return ErrEmailTaken
@@ -141,7 +141,7 @@ func (userRepo *userRepository) DeleteByID(ctx context.Context, id int64) error 
 	query := `
 		DELETE FROM users WHERE id = $1
 	`
-	cmdTag, err := userRepo.pool.Exec(ctx, query, id)
+	cmdTag, err := userRepo.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
 	}
