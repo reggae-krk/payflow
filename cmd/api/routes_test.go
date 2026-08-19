@@ -18,6 +18,10 @@ type fakeAccountHandler struct {
     createCalled bool
 }
 
+type fakeRegistrationHandler struct {
+    createdCalled bool
+}
+
 func (h *fakeUserHandler) Register(c *gin.Context) {
     h.registerCalled = true
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -38,6 +42,11 @@ func (h *fakeAccountHandler) GetBalance(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *fakeRegistrationHandler) Register(c *gin.Context) {
+    h.createdCalled = true
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func fakeHealthHandler(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -45,7 +54,8 @@ func fakeHealthHandler(c *gin.Context) {
 func TestRoutesHealthEndpoint(t *testing.T) {
     fu := &fakeUserHandler{}
     fa := &fakeAccountHandler{}
-    router := SetupRouter(fu, fa, fakeHealthHandler)
+    fr := &fakeRegistrationHandler{}
+    router := SetupRouter(fu, fa, fr, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -58,7 +68,8 @@ func TestRoutesHealthEndpoint(t *testing.T) {
 func TestRoutesRegisterEndpoint(t *testing.T) {
     fu := &fakeUserHandler{}
     fa := &fakeAccountHandler{}
-    router := SetupRouter(fu, fa, fakeHealthHandler)
+    fr := &fakeRegistrationHandler{}
+    router := SetupRouter(fu, fa, fr, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -67,13 +78,14 @@ func TestRoutesRegisterEndpoint(t *testing.T) {
     router.ServeHTTP(responseRecorder, req)
 
     assert.Equal(t, http.StatusOK, responseRecorder.Code)
-    assert.True(t, fu.registerCalled)
+    assert.True(t, fr.createdCalled)
 }
 
 func TestRoutesLoginEndpoint(t *testing.T) {
     fu := &fakeUserHandler{}
     fa := &fakeAccountHandler{}
-    router := SetupRouter(fu, fa, fakeHealthHandler)
+    fr := &fakeRegistrationHandler{}
+    router := SetupRouter(fu, fa, fr, fakeHealthHandler)
 
     responseRecorder := httptest.NewRecorder()
     body := `{"email": "test@example.com", "password": "StrongP@ss1"}`

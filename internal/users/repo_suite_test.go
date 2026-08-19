@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/reggae-krk/payflow/internal/users/testhelpers"
+	"github.com/reggae-krk/payflow/internal/testhelpers"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -36,16 +36,18 @@ func (suite *UserRepoTestSuite) SetupSuite() {
 }
 
 func (suite *UserRepoTestSuite) TearDownSuite() {
-    if suite.repository != nil && suite.repository.pool != nil {
-        suite.repository.pool.Close()
-    }
+    if suite.repository != nil {
+	if pool, ok := suite.repository.db.(*pgxpool.Pool); ok {
+		pool.Close()
+	}
+}
     if err := suite.pgContainer.Terminate(suite.ctx); err != nil {
         log.Fatalf("error terminating postgres container: %s", err)
     }
 }
 
 func (suite *UserRepoTestSuite) SetupTest() {
-    _, err := suite.repository.pool.Exec(
+    _, err := suite.repository.db.Exec(
         suite.ctx,
         "TRUNCATE TABLE users RESTART IDENTITY CASCADE",
     )

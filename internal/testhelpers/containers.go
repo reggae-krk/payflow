@@ -3,6 +3,7 @@ package testhelpers
 import (
 	"context"
 	"path/filepath"
+	"sort"
 
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -15,7 +16,7 @@ type PostgresContainer struct {
 func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 	pgContainer, err := postgres.Run(ctx,
 		"postgres:16-alpine",
-		postgres.WithInitScripts(filepath.Join("..", "..", "migrations", "000001_create_users_and_accounts.up.sql")),
+		postgres.WithInitScripts(allMigrationFiles()...),
 		postgres.WithDatabase("test-db"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("postgres"),
@@ -33,4 +34,14 @@ func CreatePostgresContainer(ctx context.Context) (*PostgresContainer, error) {
 		PostgresContainer: pgContainer,
 		ConnectionString:  connStr,
 	}, nil
+}
+
+func allMigrationFiles() []string {
+	pattern := filepath.Join("..", "..", "migrations", "*.up.sql")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		panic(err)
+	}
+	sort.Strings(files)
+	return files
 }
