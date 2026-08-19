@@ -18,7 +18,7 @@ func SetupRouter(userHandler users.UserHandler, accountHandler wallet.AccountHan
 	return server
 }
 
-func registerRoutes(server *gin.Engine, usersHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler,) {
+func registerRoutes(server *gin.Engine, usersHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler) {
 	server.POST("/register", registrationHandler.Register)
 	server.POST("/login", usersHandler.Login)
 

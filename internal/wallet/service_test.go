@@ -26,12 +26,12 @@ func TestServiceCreateAccountValid(t *testing.T) {
 	assert.Equal(t, int64(0), account.BalanceMinor)
 	assert.Equal(t, PLN, account.Currency)
 	assert.Greater(t, account.Id, int64(0))
-    
-    margin := 5 * time.Second
-    assert.False(t, account.CreatedAt.Before(before.Add(-margin)),
-        "CreatedAt too far in the past: %v", account.CreatedAt)
-    assert.False(t, account.CreatedAt.After(after.Add(margin)),
-        "CreatedAt too far in the future: %v", account.CreatedAt)
+
+	margin := 5 * time.Second
+	assert.False(t, account.CreatedAt.Before(before.Add(-margin)),
+		"CreatedAt too far in the past: %v", account.CreatedAt)
+	assert.False(t, account.CreatedAt.After(after.Add(margin)),
+		"CreatedAt too far in the future: %v", account.CreatedAt)
 }
 
 func TestServiceCreateMultipleAccounts(t *testing.T) {
@@ -107,7 +107,7 @@ func TestServiceGetBalanceValidOwner(t *testing.T) {
 
 	assert.Equal(t, int64(200), balance)
 
-	err = repo.AdjustBalance(t.Context(), account.Id, -200)
+	repo.AdjustBalance(t.Context(), account.Id, -200)
 	balance, _ = service.GetBalance(context.Background(), account.UserId, account.UserId)
 
 	assert.Equal(t, int64(0), balance)

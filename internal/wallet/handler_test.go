@@ -34,10 +34,10 @@ func TestHandlerGetBalanceValidRequest(t *testing.T) {
 	h := NewHandler(fakeSvc)
 
 	responseRecorder := httptest.NewRecorder()
-    c, _ := gin.CreateTestContext(responseRecorder)
+	c, _ := gin.CreateTestContext(responseRecorder)
 
-    c.Request = httptest.NewRequest(http.MethodPost, "/accounts/1/balance", nil)
-    c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Request = httptest.NewRequest(http.MethodPost, "/accounts/1/balance", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
 	c.Set("user_id", int64(100))
 
 	h.GetBalance(c)

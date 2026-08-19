@@ -92,45 +92,45 @@ func TestHandlerRegisterInvalidEmail(t *testing.T) {
 }
 
 func TestHandlerRegisterEmailTaken(t *testing.T) {
-    fakeSvc := &fakeRegistrationService{
-        registerUser: nil,
-        err:  users.ErrEmailTaken,
-    }
+	fakeSvc := &fakeRegistrationService{
+		registerUser: nil,
+		err:          users.ErrEmailTaken,
+	}
 
-    h := NewHandler(fakeSvc)
+	h := NewHandler(fakeSvc)
 
-    responseRecorder := httptest.NewRecorder()
-    c, _ := gin.CreateTestContext(responseRecorder)
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
 
-    body := `{"email": "taken@example.com", "password": "StrongP@ss1"}`
-    c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
-    c.Request.Header.Set("Content-Type", "application/json")
+	body := `{"email": "taken@example.com", "password": "StrongP@ss1"}`
+	c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-    h.Register(c)
+	h.Register(c)
 
-    assert.Equal(t, http.StatusConflict, responseRecorder.Code)
-    assert.True(t, fakeSvc.registerCalled)
+	assert.Equal(t, http.StatusConflict, responseRecorder.Code)
+	assert.True(t, fakeSvc.registerCalled)
 
-    var resp map[string]any
-    err := json.Unmarshal(responseRecorder.Body.Bytes(), &resp)
-    require.NoError(t, err)
+	var resp map[string]any
+	err := json.Unmarshal(responseRecorder.Body.Bytes(), &resp)
+	require.NoError(t, err)
 
-    assert.Equal(t, "email already registered", resp["error"])
+	assert.Equal(t, "email already registered", resp["error"])
 }
 
 func TestHandlerRegisterInvalidJSON(t *testing.T) {
-    fakeSvc := &fakeRegistrationService{}
-    h := NewHandler(fakeSvc)
+	fakeSvc := &fakeRegistrationService{}
+	h := NewHandler(fakeSvc)
 
-    responseRecorder := httptest.NewRecorder()
-    c, _ := gin.CreateTestContext(responseRecorder)
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
 
-    body := `{invalid json}`
-    c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
-    c.Request.Header.Set("Content-Type", "application/json")
+	body := `{invalid json}`
+	c.Request = httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 
-    h.Register(c)
+	h.Register(c)
 
-    assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
-    assert.False(t, fakeSvc.registerCalled)
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.registerCalled)
 }

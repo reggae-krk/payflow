@@ -6,27 +6,27 @@ import (
 )
 
 type Config struct {
-	DBHost string
-	DBPort string
-	DBUser string
+	DBHost     string
+	DBPort     string
+	DBUser     string
 	DBPassword string
-	DBName string
-	JWTSecret string
+	DBName     string
+	JWTSecret  string
 }
 
 func Load() Config {
 	jwtSecret := getEnv("JWT_SECRET", "")
-    if jwtSecret == "" {
-        panic("JWT_SECRET is required")
-    }
+	if jwtSecret == "" {
+		panic("JWT_SECRET is required")
+	}
 
 	return Config{
-		DBHost: getEnv("DB_HOST", "localhost"),
-		DBPort: getEnv("DB_PORT", "5432"),
-		DBUser: getEnv("DB_USER", "payflow"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "payflow"),
 		DBPassword: getEnv("DB_PASSWORD", "payflow_dev_password"),
-		DBName: getEnv("DB_NAME", "payflow"),
-		JWTSecret: getEnv("JWT_SECRET", jwtSecret),
+		DBName:     getEnv("DB_NAME", "payflow"),
+		JWTSecret:  getEnv("JWT_SECRET", jwtSecret),
 	}
 }
 

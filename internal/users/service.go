@@ -8,8 +8,8 @@ import (
 var ErrInvalidCredentials = errors.New("invalid email or password")
 
 type UserService interface {
-    Register(ctx context.Context, email, password string) (*User, error)
-    Login(ctx context.Context, email, password string) (*User, error)
+	Register(ctx context.Context, email, password string) (*User, error)
+	Login(ctx context.Context, email, password string) (*User, error)
 }
 
 type service struct {
@@ -24,7 +24,7 @@ func (s *service) Register(ctx context.Context, email, password string) (*User, 
 	if err := ValidateEmail(email); err != nil {
 		return nil, err
 	}
-	
+
 	if err := ValidatePassword(password); err != nil {
 		return nil, err
 	}

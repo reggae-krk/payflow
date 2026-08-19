@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -25,7 +26,7 @@ func (r *fakeAccountRepository) Create(ctx context.Context, userId int64, curren
 		CreatedAt: time.Now(),
 	}
 	if !currency.IsValid() {
-		// return nil, ErrInvalidCurrency
+		return nil, errors.New("")
 	}
 	r.nextID++
 	r.accounts[account.Id] = account
@@ -58,9 +59,9 @@ func (r *fakeAccountRepository) AdjustBalance(ctx context.Context, id int64, del
 
 	balance := account.BalanceMinor
 
-	if balance + deltaMinor < 0 {
-		return  ErrInsufficientFunds
+	if balance+deltaMinor < 0 {
+		return ErrInsufficientFunds
 	}
-	account.BalanceMinor+=deltaMinor
+	account.BalanceMinor += deltaMinor
 	return nil
 }

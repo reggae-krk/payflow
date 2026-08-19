@@ -15,12 +15,12 @@ var ErrNoRows = errors.New("no rows in result set")
 var ErrNoRowToUpdate = errors.New("no row found to update")
 
 type UserRepository interface {
-    CreateUser(ctx context.Context, email, passwordHash string) (*User, error)
-    GetByID(ctx context.Context, id int64) (*User, error)
-    GetByEmail(ctx context.Context, email string) (*User, error)
-    UpdateEmail(ctx context.Context, id int64, newEmail string) error
-    UpdatePassword(ctx context.Context, id int64, newPasswordHash string) error
-    DeleteByID(ctx context.Context, id int64) error
+	CreateUser(ctx context.Context, email, passwordHash string) (*User, error)
+	GetByID(ctx context.Context, id int64) (*User, error)
+	GetByEmail(ctx context.Context, email string) (*User, error)
+	UpdateEmail(ctx context.Context, id int64, newEmail string) error
+	UpdatePassword(ctx context.Context, id int64, newPasswordHash string) error
+	DeleteByID(ctx context.Context, id int64) error
 }
 
 type userRepository struct {
@@ -154,9 +154,9 @@ func (userRepo *userRepository) DeleteByID(ctx context.Context, id int64) error 
 }
 
 func isUniqueViolation(err error) bool {
-    var pgErr *pgconn.PgError
-    if !errors.As(err, &pgErr) {
-        return false
-    }
-    return pgErr.Code == pgerrcode.UniqueViolation
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == pgerrcode.UniqueViolation
 }

@@ -39,7 +39,7 @@ func VerifyToken(token string) (int64, error) {
 	}
 
 	if !parsedToken.Valid {
-		return -1, errors.New("Not valid token")
+		return -1, errors.New("not valid token")
 	}
 
 	claims, ok := parsedToken.Claims.(jwt.MapClaims)

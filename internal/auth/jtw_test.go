@@ -2,7 +2,6 @@ package auth
 
 import "testing"
 
-
 func TestGenerateAndVerifyToken(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-pass")
 	userId := int64(12345)

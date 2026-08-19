@@ -45,6 +45,6 @@ func (s *service) GetBalance(ctx context.Context, accountId, requestingUserId in
 	if requestingUserId != account.UserId {
 		return 0, ErrForbidden
 	}
-	
+
 	return account.BalanceMinor, nil
 }

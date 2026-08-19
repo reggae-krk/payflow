@@ -26,7 +26,7 @@ func (h *handler) GetBalance(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid account id"})
 		return
 	}
-	
+
 	requestingUserID, ok := userIDFromContext(ctx)
 	if !ok {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "missing or invalid user context"})

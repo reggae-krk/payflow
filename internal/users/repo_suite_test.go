@@ -36,24 +36,24 @@ func (suite *UserRepoTestSuite) SetupSuite() {
 }
 
 func (suite *UserRepoTestSuite) TearDownSuite() {
-    if suite.repository != nil {
-	if pool, ok := suite.repository.db.(*pgxpool.Pool); ok {
-		pool.Close()
+	if suite.repository != nil {
+		if pool, ok := suite.repository.db.(*pgxpool.Pool); ok {
+			pool.Close()
+		}
 	}
-}
-    if err := suite.pgContainer.Terminate(suite.ctx); err != nil {
-        log.Fatalf("error terminating postgres container: %s", err)
-    }
+	if err := suite.pgContainer.Terminate(suite.ctx); err != nil {
+		log.Fatalf("error terminating postgres container: %s", err)
+	}
 }
 
 func (suite *UserRepoTestSuite) SetupTest() {
-    _, err := suite.repository.db.Exec(
-        suite.ctx,
-        "TRUNCATE TABLE users RESTART IDENTITY CASCADE",
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
+	_, err := suite.repository.db.Exec(
+		suite.ctx,
+		"TRUNCATE TABLE users RESTART IDENTITY CASCADE",
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func TestUserRepoTestSuite(t *testing.T) {
@@ -61,89 +61,89 @@ func TestUserRepoTestSuite(t *testing.T) {
 }
 
 func (suite *UserRepoTestSuite) TestCreateUser() {
-    user, err := suite.createUser(FirstUserEmail)
+	user, err := suite.createUser(FirstUserEmail)
 
-    suite.Require().NoError(err)
-    suite.Require().NotNil(user)
-    suite.Require().NotZero(user.Id)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(user)
+	suite.Require().NotZero(user.Id)
 }
 
 func (suite *UserRepoTestSuite) TestGetUserById() {
-    user, err := suite.createUser(FirstUserEmail)
-    suite.Require().NoError(err)
+	user, err := suite.createUser(FirstUserEmail)
+	suite.Require().NoError(err)
 
-    user, err = suite.repository.GetByID(suite.ctx, user.Id)
-	
-    suite.Require().NoError(err)
-    suite.Require().NotNil(user)
-    suite.Require().Equal(FirstUserEmail, user.Email)
+	user, err = suite.repository.GetByID(suite.ctx, user.Id)
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(user)
+	suite.Require().Equal(FirstUserEmail, user.Email)
 }
 
 func (suite *UserRepoTestSuite) TestGetUserByEmail() {
-    user, err := suite.createUser(FirstUserEmail)
-    suite.Require().NoError(err)
+	_, err := suite.createUser(FirstUserEmail)
+	suite.Require().NoError(err)
 
-	user, err = suite.repository.GetByEmail(suite.ctx, FirstUserEmail)
-	
-    suite.Require().NoError(err)
-    suite.Require().NotNil(user)
-    suite.Require().Equal(FirstUserEmail, user.Email)
+	user, err := suite.repository.GetByEmail(suite.ctx, FirstUserEmail)
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(user)
+	suite.Require().Equal(FirstUserEmail, user.Email)
 }
 
 func (suite *UserRepoTestSuite) TestUpdateUserEmail() {
-    user, err := suite.createUser(FirstUserEmail)
-    suite.Require().NoError(err)
+	user, err := suite.createUser(FirstUserEmail)
+	suite.Require().NoError(err)
 
-    err = suite.repository.UpdateEmail(suite.ctx, user.Id, FirstUserChangedEmail)
+	err = suite.repository.UpdateEmail(suite.ctx, user.Id, FirstUserChangedEmail)
 
-    suite.Require().NoError(err)
-    
-    user, err = suite.repository.GetByEmail(suite.ctx, FirstUserChangedEmail)
+	suite.Require().NoError(err)
 
-    suite.Require().NotNil(user)
-    suite.Require().Equal(FirstUserChangedEmail, user.Email)
+	obtainedUser, err := suite.repository.GetByEmail(suite.ctx, FirstUserChangedEmail)
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(obtainedUser)
+	suite.Require().Equal(FirstUserChangedEmail, obtainedUser.Email)
 }
 
 func (suite *UserRepoTestSuite) TestUpdateUserEmailByTakenValue() {
-    user, err := suite.createUser(FirstUserEmail)
-    suite.Require().NoError(err)
+	_, err := suite.createUser(FirstUserEmail)
+	suite.Require().NoError(err)
 
-    user, err = suite.createUser(FirstUserChangedEmail)
-
-    suite.Require().NoError(err)
+	user, err := suite.createUser(FirstUserChangedEmail)
+	suite.Require().NoError(err)
 
 	err = suite.repository.UpdateEmail(suite.ctx, user.Id, FirstUserChangedEmail)
-	
-    suite.Require().Error(err)
-    suite.Require().ErrorIs(err, ErrEmailTaken)
+
+	suite.Require().Error(err)
+	suite.Require().ErrorIs(err, ErrEmailTaken)
 }
 
 func (suite *UserRepoTestSuite) TestDeleteUserById() {
-    user, err := suite.createUser("delete@user.com")
+	user, err := suite.createUser("delete@user.com")
 
-    suite.Require().NoError(err)
-    suite.Require().NotNil(user)
-    suite.Require().NotZero(user.Id)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(user)
+	suite.Require().NotZero(user.Id)
 
-    id := user.Id
-    email := user.Email
-    err = suite.repository.DeleteByID(suite.ctx, id)
-	
-    suite.Require().NoError(err)
+	id := user.Id
+	email := user.Email
+	err = suite.repository.DeleteByID(suite.ctx, id)
 
-    user, err = suite.repository.GetByID(suite.ctx, id)
+	suite.Require().NoError(err)
 
-    suite.Require().Error(err)
+	user, err = suite.repository.GetByID(suite.ctx, id)
+
+	suite.Require().Error(err)
 	suite.Require().ErrorIs(err, ErrNoRows)
-    suite.Require().Nil(user)
+	suite.Require().Nil(user)
 
-    user, err = suite.repository.GetByEmail(suite.ctx, email)
+	user, err = suite.repository.GetByEmail(suite.ctx, email)
 
-    suite.Require().Error(err)
+	suite.Require().Error(err)
 	suite.Require().ErrorIs(err, ErrNoRows)
-    suite.Require().Nil(user)
+	suite.Require().Nil(user)
 }
 
 func (suite *UserRepoTestSuite) createUser(email string) (*User, error) {
-    return suite.repository.CreateUser(suite.ctx, email, "hashS%24")
+	return suite.repository.CreateUser(suite.ctx, email, "hashS%24")
 }
