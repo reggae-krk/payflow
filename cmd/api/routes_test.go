@@ -42,6 +42,21 @@ func (h *fakeAccountHandler) GetBalance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *fakeAccountHandler) Deposit(c *gin.Context) {
+	h.createCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *fakeAccountHandler) Withdraw(c *gin.Context) {
+	h.createCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *fakeAccountHandler) Transfer(c *gin.Context) {
+	h.createCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (h *fakeRegistrationHandler) Register(c *gin.Context) {
 	h.createdCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

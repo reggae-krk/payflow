@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/reggae-krk/payflow/internal/db"
 )
 
@@ -44,7 +42,7 @@ func (userRepo *userRepository) CreateUser(ctx context.Context, email, passwordH
 		&user.CreatedAt)
 
 	if err != nil {
-		if isUniqueViolation(err) {
+		if db.IsUniqueViolation(err) {
 			return nil, ErrEmailTaken
 		}
 		return nil, err
@@ -124,7 +122,7 @@ func (userRepo *userRepository) UpdateEmail(ctx context.Context, id int64, newEm
 
 	cmdTag, err := userRepo.db.Exec(ctx, query, newEmail, id)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if db.IsUniqueViolation(err) {
 			return ErrEmailTaken
 		}
 		return err
@@ -151,12 +149,4 @@ func (userRepo *userRepository) DeleteByID(ctx context.Context, id int64) error 
 	}
 
 	return nil
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return false
-	}
-	return pgErr.Code == pgerrcode.UniqueViolation
 }

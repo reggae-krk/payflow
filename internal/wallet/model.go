@@ -17,3 +17,13 @@ type LedgerEntry struct {
 	EntryType     EntryType
 	AmountMinor   int64
 }
+
+type Transfer struct {
+	Id                   int64
+	IdempotencyKey       *string // nullable
+	SourceAccountID      int64
+	DestinationAccountID int64
+	AmountMinor          int64
+	Status               string // 'pending', 'completed', 'failed'
+	CreatedAt            time.Time
+}

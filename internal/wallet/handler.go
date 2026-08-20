@@ -12,6 +12,7 @@ type AccountHandler interface {
 	GetBalance(ctx *gin.Context)
 	Deposit(ctx *gin.Context)
 	Withdraw(ctx *gin.Context)
+	Transfer(ctx *gin.Context)
 }
 
 type handler struct {
@@ -28,6 +29,13 @@ type WithdrawRequest struct {
 	AmountMinor      int64 `json:"amount_minor" binding:"required,min=1"`
 	AccountID        int64 `json:"-"`
 	RequestingUserID int64 `json:"-"`
+}
+
+type TransferRequest struct {
+	AmountMinor          int64 `json:"amount_minor" binding:"required,min=1"`
+	DestinationAccountID int64 `json:"destination_account_id" binding:"required"`
+	SourceAccountID      int64 `json:"-"`
+	RequestingUserID     int64 `json:"-"`
 }
 
 type HandlerError struct {
@@ -136,6 +144,55 @@ func (h *handler) Withdraw(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "withdrawal successful"})
+}
+
+func (h *handler) Transfer(ctx *gin.Context) {
+	var req TransferRequest
+
+	idempotencyKey := ctx.GetHeader("X-Idempotency-Key")
+	if idempotencyKey == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Idempotency-Key header required"})
+		return
+	}
+
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+	if hErr != nil {
+		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		return
+	}
+
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	req.SourceAccountID = accountID
+	req.RequestingUserID = requestingUserID
+
+	transfer, err := h.service.Transfer(ctx, req, idempotencyKey)
+	if err != nil {
+		if errors.Is(err, ErrForbidden) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+
+		if errors.Is(err, ErrInsufficientFunds) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
+			return
+		}
+
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "transfer successful",
+		"transfer_id":   transfer.Id,
+		"source account_id":   transfer.SourceAccountID,
+		"destination account_id":   transfer.DestinationAccountID,
+		"transfer amount":   transfer.AmountMinor,
+		"status":   transfer.Status,
+	})
 }
 
 func userIDFromContext(ctx *gin.Context) (int64, bool) {

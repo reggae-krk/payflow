@@ -35,6 +35,10 @@ func (s *fakeService) Withdraw(ctx context.Context, req WithdrawRequest) error {
 	return nil
 }
 
+func (s *fakeService) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error) {
+	return nil, nil
+}
+
 func TestHandlerGetBalanceValidRequest(t *testing.T) {
 	fakeSvc := &fakeService{
 		balance: 5000,
@@ -88,7 +92,7 @@ func TestHandlerGetBalanceMissingContent(t *testing.T) {
 
 	h.GetBalance(c)
 
-	assert.Equal(t, http.StatusInternalServerError, responseRecorder.Code)
+	assert.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
 	assert.False(t, fakeSvc.getBalanceCalled)
 }
 
