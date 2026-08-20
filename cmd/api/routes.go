@@ -26,4 +26,5 @@ func registerRoutes(server *gin.Engine, usersHandler users.UserHandler, accountH
 	authGroup.Use(auth.RequireAuth)
 
 	authGroup.GET("/accounts/:accountId/balance", accountHandler.GetBalance)
+	authGroup.POST("/accounts/:accountId/deposit", accountHandler.Deposit)
 }

@@ -3,6 +3,8 @@ package wallet
 import (
 	"context"
 	"errors"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrForbidden = errors.New("account does not belong to requesting user")
@@ -10,14 +12,22 @@ var ErrForbidden = errors.New("account does not belong to requesting user")
 type AccountService interface {
 	CreateAccount(ctx context.Context, userId int64, currency string) (*Account, error)
 	GetBalance(ctx context.Context, accountId, requestingUserId int64) (int64, error)
+	Deposit(ctx context.Context, req DepositRequest) error
 }
 
 type service struct {
 	repo AccountRepository
+	pool *pgxpool.Pool
 }
 
 func NewService(repo AccountRepository) *service {
 	return &service{repo: repo}
+}
+
+func NewTransactionalService(repo AccountRepository, pool *pgxpool.Pool) *service {
+	return &service{repo: repo,
+		pool: pool,
+	}
 }
 
 func (s *service) CreateAccount(ctx context.Context, userId int64, curr string) (*Account, error) {
@@ -47,4 +57,53 @@ func (s *service) GetBalance(ctx context.Context, accountId, requestingUserId in
 	}
 
 	return account.BalanceMinor, nil
+}
+
+func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
+	if s.pool == nil {
+		return errors.New("wallet: Deposit requires service built with NewTransactionalService")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	txAccountRepo := NewAccountRepository(tx)
+	txLedgerRepo := NewLedgerRepository(tx)
+
+	account, err := txAccountRepo.GetByID(ctx, req.AccountID)
+
+	if err != nil {
+		return err
+	}
+
+	if req.RequestingUserID != account.UserId {
+		return ErrForbidden
+	}
+
+	ledgerEntry := LedgerEntry{
+		TransferID:    nil, // deposit is not a transfer
+		AccountID:     req.AccountID,
+		OperationType: OperationDeposit,
+		EntryType:     EntryCredit,
+		AmountMinor:   req.AmountMinor,
+	}
+
+	err = txAccountRepo.AdjustBalance(ctx, req.AccountID, req.AmountMinor)
+
+	if err != nil {
+		return err
+	}
+
+	err = txLedgerRepo.Insert(ctx, ledgerEntry)
+
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
 }

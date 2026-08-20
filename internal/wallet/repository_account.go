@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/reggae-krk/payflow/internal/db"
 )
 
@@ -44,7 +42,7 @@ func (accountRepo *accountRepository) Create(ctx context.Context, userId int64, 
 	)
 
 	if err != nil {
-		if isForeignKeyViolation(err) {
+		if db.IsForeignKeyViolation(err) {
 			return nil, ErrUserNotFound
 		}
 		return nil, err
@@ -140,12 +138,4 @@ func (accountRepo *accountRepository) exists(ctx context.Context, id int64) (boo
 		return false, err
 	}
 	return exists, nil
-}
-
-func isForeignKeyViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return false
-	}
-	return pgErr.Code == pgerrcode.ForeignKeyViolation
 }
