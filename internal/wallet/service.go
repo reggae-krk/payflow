@@ -13,6 +13,7 @@ type AccountService interface {
 	CreateAccount(ctx context.Context, userId int64, currency string) (*Account, error)
 	GetBalance(ctx context.Context, accountId, requestingUserId int64) (int64, error)
 	Deposit(ctx context.Context, req DepositRequest) error
+	Withdraw(ctx context.Context, req WithdrawRequest) error
 }
 
 type service struct {
@@ -91,6 +92,55 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 	}
 
 	err = txAccountRepo.AdjustBalance(ctx, req.AccountID, req.AmountMinor)
+
+	if err != nil {
+		return err
+	}
+
+	err = txLedgerRepo.Insert(ctx, ledgerEntry)
+
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
+	if s.pool == nil {
+		return errors.New("wallet: withdraw requires service built with NewTransactionalService")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	txAccountRepo := NewAccountRepository(tx)
+	txLedgerRepo := NewLedgerRepository(tx)
+
+	account, err := txAccountRepo.GetByID(ctx, req.AccountID)
+
+	if err != nil {
+		return err
+	}
+
+	if req.RequestingUserID != account.UserId {
+		return ErrForbidden
+	}
+
+	ledgerEntry := LedgerEntry{
+		TransferID:    nil, // withdraw is not a transfer
+		AccountID:     req.AccountID,
+		OperationType: OperationWithdrawal,
+		EntryType:     EntryDebit,
+		AmountMinor:   req.AmountMinor,
+	}
+
+	err = txAccountRepo.AdjustBalance(ctx, req.AccountID, -req.AmountMinor)
 
 	if err != nil {
 		return err
