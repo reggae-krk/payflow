@@ -27,6 +27,14 @@ func (s *fakeService) GetBalance(ctx context.Context, accountId, requestingUserI
 	return s.balance, s.err
 }
 
+func (s *fakeService) Deposit(ctx context.Context, req DepositRequest) error {
+	return nil
+}
+
+func (s *fakeService) Withdraw(ctx context.Context, req WithdrawRequest) error {
+	return nil
+}
+
 func TestHandlerGetBalanceValidRequest(t *testing.T) {
 	fakeSvc := &fakeService{
 		balance: 5000,
