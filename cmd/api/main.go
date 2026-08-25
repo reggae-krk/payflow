@@ -28,7 +28,7 @@ func main() {
 	usersHandler := users.NewHandler(usersService)
 
 	accountRepo := wallet.NewAccountRepository(pool)
-	accountService := wallet.NewService(accountRepo)
+	accountService := wallet.NewTransactionalService(accountRepo, pool)
 	accountHandler := wallet.NewHandler(accountService)
 
 	registrationService := app.NewService(pool)
