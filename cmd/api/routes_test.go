@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/reggae-krk/payflow/internal/auth"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeUserHandler struct {
@@ -15,7 +18,10 @@ type fakeUserHandler struct {
 }
 
 type fakeAccountHandler struct {
-	createCalled bool
+	getBalanceCalled bool
+	depositCalled    bool
+	withdrawCalled   bool
+	transferCalled   bool
 }
 
 type fakeRegistrationHandler struct {
@@ -32,28 +38,23 @@ func (h *fakeUserHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (h *fakeAccountHandler) CreateAccount(c *gin.Context) {
-	h.createCalled = true
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
 func (h *fakeAccountHandler) GetBalance(c *gin.Context) {
-	h.createCalled = true
+	h.getBalanceCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *fakeAccountHandler) Deposit(c *gin.Context) {
-	h.createCalled = true
+	h.depositCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *fakeAccountHandler) Withdraw(c *gin.Context) {
-	h.createCalled = true
+	h.withdrawCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *fakeAccountHandler) Transfer(c *gin.Context) {
-	h.createCalled = true
+	h.transferCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -110,4 +111,110 @@ func TestRoutesLoginEndpoint(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, responseRecorder.Code)
 	assert.True(t, fu.registerCalled)
+}
+
+func validAuthHeader(t *testing.T) string {
+	t.Setenv("JWT_SECRET", "test-pass")
+	token, err := auth.GenerateToken(1)
+	require.NoError(t, err)
+	return fmt.Sprintf("Bearer %s", token)
+}
+
+func TestRoutesBalanceEndpoint(t *testing.T) {
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+	responseRecorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/accounts/1/balance", nil)
+	req.Header.Set("Authorization", validAuthHeader(t))
+	router.ServeHTTP(responseRecorder, req)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.True(t, fa.getBalanceCalled)
+}
+
+func TestRoutesDepositEndpoint(t *testing.T) {
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+	responseRecorder := httptest.NewRecorder()
+	body := `{"amount_minor": 500}`
+	req := httptest.NewRequest(http.MethodPost, "/accounts/1/deposit", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", validAuthHeader(t))
+	router.ServeHTTP(responseRecorder, req)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.True(t, fa.depositCalled)
+}
+
+func TestRoutesWithdrawEndpoint(t *testing.T) {
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+	responseRecorder := httptest.NewRecorder()
+	body := `{"amount_minor": 500}`
+	req := httptest.NewRequest(http.MethodPost, "/accounts/1/withdraw", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", validAuthHeader(t))
+	router.ServeHTTP(responseRecorder, req)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.True(t, fa.withdrawCalled)
+}
+
+func TestRoutesTransferEndpoint(t *testing.T) {
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+	responseRecorder := httptest.NewRecorder()
+	body := `{"amount_minor": 500, "destination_account_id": 2}`
+	req := httptest.NewRequest(http.MethodPost, "/accounts/1/transfer", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Idempotency-Key", "route-test-key")
+	req.Header.Set("Authorization", validAuthHeader(t))
+	router.ServeHTTP(responseRecorder, req)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.True(t, fa.transferCalled)
+}
+
+func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"balance", http.MethodGet, "/accounts/1/balance"},
+		{"deposit", http.MethodPost, "/accounts/1/deposit"},
+		{"withdraw", http.MethodPost, "/accounts/1/withdraw"},
+		{"transfer", http.MethodPost, "/accounts/1/transfer"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fu := &fakeUserHandler{}
+			fa := &fakeAccountHandler{}
+			fr := &fakeRegistrationHandler{}
+			router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+			responseRecorder := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			router.ServeHTTP(responseRecorder, req)
+
+			assert.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+			assert.False(t, fa.getBalanceCalled)
+			assert.False(t, fa.depositCalled)
+			assert.False(t, fa.withdrawCalled)
+			assert.False(t, fa.transferCalled)
+		})
+	}
 }
