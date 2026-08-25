@@ -259,6 +259,8 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 		return nil, err
 	}
 
+	transfer.Status = "completed"
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}

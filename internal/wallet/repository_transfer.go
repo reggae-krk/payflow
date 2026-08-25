@@ -27,11 +27,13 @@ func (r *transferRepository) Create(ctx context.Context, sourceAccountID, destAc
 	query := `
 		INSERT INTO transfers (source_account_id, destination_account_id, amount_minor, idempotency_key, status)
 		VALUES ($1, $2, $3, $4, 'pending')
-		RETURNING id, source_account_id, destination_account_id, amount_minor, status, created_at
+		RETURNING id, source_account_id, destination_account_id, amount_minor, idempotency_key, status, created_at
 	`
 
-	err := r.db.QueryRow(ctx, query, sourceAccountID, destAccountID, amountMinor, idempotencyKey).Scan(&transfer.Id, &transfer.SourceAccountID, &transfer.DestinationAccountID, &transfer.AmountMinor, &transfer.Status,
-		&transfer.CreatedAt)
+	err := r.db.QueryRow(ctx, query, sourceAccountID, destAccountID, amountMinor, idempotencyKey).Scan(
+		&transfer.Id, &transfer.SourceAccountID, &transfer.DestinationAccountID,
+		&transfer.AmountMinor, &transfer.IdempotencyKey, &transfer.Status, &transfer.CreatedAt,
+	)
 
 	if err != nil {
 		if db.IsUniqueViolation(err) {
