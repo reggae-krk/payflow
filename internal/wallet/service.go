@@ -235,6 +235,12 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 
 	if err != nil {
 		if db.IsUniqueViolation(err) {
+			// TODO(PF-14.1): this is not true idempotency yet. Instead of returning
+			// ErrDuplicateTransfer (409), a real idempotency implementation should look up
+			// the existing transfer by idempotency_key and return it as if this were the
+			// first successful call — same approach Stripe/Adyen use. Right now the client
+			// has no way to distinguish "my transfer succeeded" from "something went wrong
+			// on retry".
 			return nil, ErrDuplicateTransfer
 		}
 		return nil, err
