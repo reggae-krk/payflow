@@ -65,3 +65,7 @@ func (r *fakeAccountRepository) AdjustBalance(ctx context.Context, id int64, del
 	account.BalanceMinor += deltaMinor
 	return nil
 }
+
+func (r *fakeAccountRepository) GetByIDForUpdate(ctx context.Context, id int64) (*Account, error) {
+	return r.GetByID(ctx, id)
+}

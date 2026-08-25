@@ -172,9 +172,13 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	if req.AmountMinor <= 0 {
 		return nil, ErrInvalidAmount
 	}
+	if req.SourceAccountID == req.DestinationAccountID {
+		return nil, ErrInvalidTransfer
+	}
 	if s.pool == nil {
 		return nil, errors.New("wallet: transfer requires service built with NewTransactionalService")
 	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -185,25 +189,36 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	txLedgerRepo := NewLedgerRepository(tx)
 	txTransferRepo := NewTransferRepository(tx)
 
-	sourceAccount, err := txAccountRepo.GetByID(ctx, req.SourceAccountID)
+	firstID, secondID := req.SourceAccountID, req.DestinationAccountID
+	if firstID > secondID {
+		firstID, secondID = secondID, firstID
+	}
 
+	firstAccount, err := txAccountRepo.GetByIDForUpdate(ctx, firstID)
 	if err != nil {
-		return nil, err
-	}
-
-	if req.RequestingUserID != sourceAccount.UserId {
-		return nil, ErrForbidden
-	}
-
-	if req.SourceAccountID == req.DestinationAccountID {
-		return nil, ErrInvalidTransfer
-	}
-
-	if _, err = txAccountRepo.GetByID(ctx, req.DestinationAccountID); err != nil {
 		if errors.Is(err, ErrNoRows) {
 			return nil, ErrAccountNotFound
 		}
 		return nil, err
+	}
+
+	secondAccount, err := txAccountRepo.GetByIDForUpdate(ctx, secondID)
+	if err != nil {
+		if errors.Is(err, ErrNoRows) {
+			return nil, ErrAccountNotFound
+		}
+		return nil, err
+	}
+
+	var sourceAccount *Account
+	if firstAccount.Id == req.SourceAccountID {
+		sourceAccount = firstAccount
+	} else {
+		sourceAccount = secondAccount
+	}
+
+	if req.RequestingUserID != sourceAccount.UserId {
+		return nil, ErrForbidden
 	}
 
 	if err := txAccountRepo.AdjustBalance(ctx, req.SourceAccountID, -req.AmountMinor); err != nil {

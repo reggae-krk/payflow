@@ -18,6 +18,7 @@ type AccountRepository interface {
 	GetByID(ctx context.Context, id int64) (*Account, error)
 	GetByUserID(ctx context.Context, userId int64) ([]*Account, error)
 	AdjustBalance(ctx context.Context, id int64, deltaMinor int64) error
+	GetByIDForUpdate(ctx context.Context, id int64) (*Account, error)
 }
 
 type accountRepository struct {
@@ -127,6 +128,29 @@ func (accountRepo *accountRepository) AdjustBalance(ctx context.Context, id int6
 	}
 
 	return nil
+}
+
+func (accountRepo *accountRepository) GetByIDForUpdate(ctx context.Context, id int64) (*Account, error) {
+	var account Account
+
+	query := `
+		SELECT id, user_id, currency, balance_minor, created_at
+		FROM accounts
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	err := accountRepo.db.QueryRow(ctx, query, id).Scan(
+		&account.Id, &account.UserId, &account.Currency, &account.BalanceMinor, &account.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNoRows
+		}
+		return nil, err
+	}
+	return &account, nil
 }
 
 func (accountRepo *accountRepository) exists(ctx context.Context, id int64) (bool, error) {

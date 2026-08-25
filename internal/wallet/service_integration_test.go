@@ -1,9 +1,12 @@
 package wallet
 
 import (
+	"fmt"
+	"sync"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestServiceTransferIntegration(t *testing.T) {
@@ -575,4 +578,69 @@ func TestServiceWithdrawIntegration(t *testing.T) {
 
 		assert.ErrorIs(t, err, ErrNoRows)
 	})
+}
+
+func TestServiceTransferNoDeadlockOnConcurrentOppositeTransfers(t *testing.T) {
+	t.Cleanup(func() {
+		truncateTransferEntries(t, testPool)
+		truncateLedgerEntries(t, testPool)
+		truncateAccounts(t, testPool)
+		truncateUsers(t, testPool)
+	})
+
+	userA := insertTestUser(t, testPool)
+	userB := insertTestUser(t, testPool)
+	accountRepo := NewAccountRepository(testPool)
+	service := NewTransactionalService(accountRepo, testPool)
+
+	accountA, err := accountRepo.Create(t.Context(), userA, PLN)
+	require.NoError(t, err)
+	accountB, err := accountRepo.Create(t.Context(), userB, PLN)
+	require.NoError(t, err)
+
+	require.NoError(t, accountRepo.AdjustBalance(t.Context(), accountA.Id, 1000))
+	require.NoError(t, accountRepo.AdjustBalance(t.Context(), accountB.Id, 1000))
+
+	const iterations = 20
+	errCh := make(chan error, iterations*2)
+	var wg sync.WaitGroup
+
+	for i := 0; i < iterations; i++ {
+		wg.Add(2)
+
+		go func(key string) {
+			defer wg.Done()
+			_, err := service.Transfer(t.Context(), TransferRequest{
+				SourceAccountID: accountA.Id, DestinationAccountID: accountB.Id,
+				RequestingUserID: userA, AmountMinor: 10,
+			}, key)
+			errCh <- err
+		}(fmt.Sprintf("a-to-b-%d", i))
+
+		go func(key string) {
+			defer wg.Done()
+			_, err := service.Transfer(t.Context(), TransferRequest{
+				SourceAccountID: accountB.Id, DestinationAccountID: accountA.Id,
+				RequestingUserID: userB, AmountMinor: 10,
+			}, key)
+			errCh <- err
+		}(fmt.Sprintf("b-to-a-%d", i))
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			assert.NotContains(t, err.Error(), "deadlock detected")
+		}
+	}
+
+	finalA, err := accountRepo.GetByID(t.Context(), accountA.Id)
+	require.NoError(t, err)
+	finalB, err := accountRepo.GetByID(t.Context(), accountB.Id)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1000), finalA.BalanceMinor)
+	assert.Equal(t, int64(1000), finalB.BalanceMinor)
 }
