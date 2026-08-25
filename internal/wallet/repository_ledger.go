@@ -12,7 +12,7 @@ var ErrAccountNotFound = errors.New("account not found")
 var ErrInvalidLedgerEntry = errors.New("invalid ledger entry (check constraint failed)")
 
 type LedgerRepository interface {
-	Insert(ctx context.Context, accountID int64, amountMinor int64, entryType string) error
+	Insert(ctx context.Context, entry LedgerEntry) error
 }
 
 type ledgerRepository struct {
@@ -24,9 +24,7 @@ func NewLedgerRepository(database db.Querier) *ledgerRepository {
 }
 
 func (repo *ledgerRepository) Insert(ctx context.Context, entry LedgerEntry) error {
-	if entry.OperationType != OperationDeposit &&
-		entry.OperationType != OperationWithdrawal &&
-		entry.OperationType != OperationTransfer {
+	if !entry.OperationType.IsValid() {
 		return ErrInvalidOperationType
 	}
 

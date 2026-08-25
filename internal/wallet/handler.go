@@ -98,12 +98,24 @@ func (h *handler) Deposit(ctx *gin.Context) {
 	req.AccountID = accountID
 	req.RequestingUserID = requestingUserID
 
+	if req.AmountMinor < 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "deposit must be greather than 0"})
+		return
+	}
+
 	if err := h.service.Deposit(ctx, req); err != nil {
+		if errors.Is(err, ErrInvalidAmount) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrNoRows) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
 		if errors.Is(err, ErrForbidden) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
-
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -129,6 +141,15 @@ func (h *handler) Withdraw(ctx *gin.Context) {
 	req.RequestingUserID = requestingUserID
 
 	if err := h.service.Withdraw(ctx, req); err != nil {
+		if errors.Is(err, ErrInvalidAmount) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrNoRows) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+
 		if errors.Is(err, ErrForbidden) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
@@ -171,13 +192,20 @@ func (h *handler) Transfer(ctx *gin.Context) {
 
 	transfer, err := h.service.Transfer(ctx, req, idempotencyKey)
 	if err != nil {
-		if errors.Is(err, ErrForbidden) {
+		if errors.Is(err, ErrInvalidAmount) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrNoRows) || errors.Is(err, ErrAccountNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
-
-		if errors.Is(err, ErrInsufficientFunds) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
+		if errors.Is(err, ErrInvalidTransfer) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, ErrDuplicateTransfer) {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "duplicate transfer"})
 			return
 		}
 
@@ -186,12 +214,12 @@ func (h *handler) Transfer(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "transfer successful",
-		"transfer_id":   transfer.Id,
-		"source account_id":   transfer.SourceAccountID,
-		"destination account_id":   transfer.DestinationAccountID,
-		"transfer amount":   transfer.AmountMinor,
-		"status":   transfer.Status,
+		"message":                "transfer successful",
+		"transfer_id":            transfer.Id,
+		"source_account_id":      transfer.SourceAccountID,
+		"destination_account_id": transfer.DestinationAccountID,
+		"amount_minor":           transfer.AmountMinor,
+		"status":                 transfer.Status,
 	})
 }
 

@@ -10,6 +10,7 @@ import (
 
 var ErrForbidden = errors.New("account does not belong to requesting user")
 var ErrInvalidTransfer = errors.New("cannot transfer to the same account")
+var ErrInvalidAmount = errors.New("amount must be positive")
 
 type AccountService interface {
 	CreateAccount(ctx context.Context, userId int64, currency string) (*Account, error)
@@ -64,6 +65,9 @@ func (s *service) GetBalance(ctx context.Context, accountId, requestingUserId in
 }
 
 func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
+	if req.AmountMinor <= 0 {
+		return ErrInvalidAmount
+	}
 	if s.pool == nil {
 		return errors.New("wallet: Deposit requires service built with NewTransactionalService")
 	}
@@ -113,6 +117,9 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 }
 
 func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
+	if req.AmountMinor <= 0 {
+		return ErrInvalidAmount
+	}
 	if s.pool == nil {
 		return errors.New("wallet: withdraw requires service built with NewTransactionalService")
 	}
@@ -162,6 +169,9 @@ func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
 }
 
 func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error) {
+	if req.AmountMinor <= 0 {
+		return nil, ErrInvalidAmount
+	}
 	if s.pool == nil {
 		return nil, errors.New("wallet: transfer requires service built with NewTransactionalService")
 	}

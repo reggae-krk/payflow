@@ -121,7 +121,7 @@ func TestAccountRepositoryGetById(t *testing.T) {
 	})
 }
 
-func TestAccuntRepositoryGetByUserId(t *testing.T) {
+func TestAccountRepositoryGetByUserId(t *testing.T) {
 	t.Run("get account with valid userId", func(t *testing.T) {
 		t.Cleanup(func() {
 			truncateAccounts(t, testPool)
