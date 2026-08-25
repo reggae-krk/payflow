@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/testhelpers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testPool *pgxpool.Pool
@@ -248,6 +249,245 @@ func TestAccuntRepositoryAdjustBalance(t *testing.T) {
 	})
 }
 
+func TestLedgerRepositoryInsert(t *testing.T) {
+	t.Run("inserts valid deposit entry", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateUsers(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateLedgerEntries(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		repo := NewLedgerRepository(testPool)
+		entry := LedgerEntry{
+			TransferID:    nil,
+			AccountID:     account.Id,
+			OperationType: OperationDeposit,
+			EntryType:     EntryCredit,
+			AmountMinor:   50,
+		}
+
+		err = repo.Insert(t.Context(), entry)
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fails with ErrAccountNotFound for nonexistent account", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+		})
+
+		repo := NewLedgerRepository(testPool)
+		entry := LedgerEntry{
+			TransferID:    nil,
+			AccountID:     1,
+			OperationType: OperationDeposit,
+			EntryType:     EntryCredit,
+			AmountMinor:   50,
+		}
+
+		err := repo.Insert(t.Context(), entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrAccountNotFound)
+	})
+
+	t.Run("fails with ErrTransferNotFound for wrong transferId", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+		require.NoError(t, err)
+
+		repo := NewLedgerRepository(testPool)
+		transferId := int64(999) // nie istnieje, ale account_id jest poprawny
+		entry := LedgerEntry{
+			TransferID:    &transferId,
+			AccountID:     account.Id,
+			OperationType: OperationDeposit,
+			EntryType:     EntryCredit,
+			AmountMinor:   50,
+		}
+
+		err = repo.Insert(t.Context(), entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrTransferNotFound)
+	})
+
+	t.Run("fails with ErrInvalidLedgerEntry for wrong AmountMinor", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+		})
+
+		repo := NewLedgerRepository(testPool)
+		entry := LedgerEntry{
+			TransferID:    nil,
+			AccountID:     1,
+			OperationType: OperationDeposit,
+			EntryType:     EntryCredit,
+			AmountMinor:   -50,
+		}
+
+		err := repo.Insert(t.Context(), entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidLedgerEntry)
+	})
+
+	t.Run("fails with ErrInvalidLedgerEntry for wrong EntruType", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+		})
+
+		repo := NewLedgerRepository(testPool)
+		entry := LedgerEntry{
+			TransferID:    nil,
+			AccountID:     1,
+			OperationType: OperationDeposit,
+			EntryType:     EntryType("invalid"),
+			AmountMinor:   -50,
+		}
+
+		err := repo.Insert(t.Context(), entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidLedgerEntry)
+	})
+
+	t.Run("fails with ErrInvalidOperationType for wrong OperationType", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+		})
+
+		repo := NewLedgerRepository(testPool)
+		entry := LedgerEntry{
+			TransferID:    nil,
+			AccountID:     1,
+			OperationType: OperationType("invalid"),
+			EntryType:     EntryCredit,
+			AmountMinor:   -50,
+		}
+
+		err := repo.Insert(t.Context(), entry)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidOperationType)
+	})
+}
+
+func TestTransferRepositoryCreate(t *testing.T) {
+	t.Run("inserts valid transfer entry", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userSourceId := insertTestUser(t, testPool)
+		userDestinationId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		sourceAccount, err := accountRepo.Create(t.Context(), userSourceId, PLN)
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		destinationAccount, err := accountRepo.Create(t.Context(), userDestinationId, PLN)
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		repo := NewTransferRepository(testPool)
+
+		transfer, err := repo.Create(t.Context(), sourceAccount.Id, destinationAccount.Id, 100, "some-key")
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		assert.Equal(t, sourceAccount.Id, transfer.SourceAccountID)
+		assert.Equal(t, destinationAccount.Id, transfer.DestinationAccountID)
+		assert.Equal(t, int64(100), transfer.AmountMinor)
+		assert.Equal(t, "some-key", *transfer.IdempotencyKey)
+		assert.Equal(t, "pending", transfer.Status)
+	})
+
+	t.Run("fails with ErrDuplicateTransfer for duplicate idempotency key", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userSourceId := insertTestUser(t, testPool)
+		userDestinationId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		sourceAccount, _ := accountRepo.Create(t.Context(), userSourceId, PLN)
+		destinationAccount, _ := accountRepo.Create(t.Context(), userDestinationId, PLN)
+
+		repo := NewTransferRepository(testPool)
+
+		_, err := repo.Create(t.Context(), sourceAccount.Id, destinationAccount.Id, 100, "duplicate-key")
+		require.NoError(t, err)
+
+		_, err = repo.Create(t.Context(), sourceAccount.Id, destinationAccount.Id, 200, "duplicate-key")
+
+		assert.ErrorIs(t, err, ErrDuplicateTransfer)
+	})
+
+	t.Run("fails for nonexistent source account", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userDestinationId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		destinationAccount, _ := accountRepo.Create(t.Context(), userDestinationId, PLN)
+
+		repo := NewTransferRepository(testPool)
+
+		_, err := repo.Create(t.Context(), 9999, destinationAccount.Id, 100, "some-other-key")
+
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrDuplicateTransfer)
+	})
+
+	t.Run("fails for non-positive amount", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userSourceId := insertTestUser(t, testPool)
+		userDestinationId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		sourceAccount, _ := accountRepo.Create(t.Context(), userSourceId, PLN)
+		destinationAccount, _ := accountRepo.Create(t.Context(), userDestinationId, PLN)
+
+		repo := NewTransferRepository(testPool)
+
+		_, err := repo.Create(t.Context(), sourceAccount.Id, destinationAccount.Id, 0, "zero-amount-key")
+
+		require.Error(t, err)
+	})
+}
+
 func truncateUsers(t *testing.T, testPool *pgxpool.Pool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -265,6 +505,26 @@ func truncateAccounts(t *testing.T, testPool *pgxpool.Pool) {
 	_, err := testPool.Exec(ctx, "TRUNCATE accounts RESTART IDENTITY CASCADE")
 	if err != nil {
 		t.Fatalf("failed to truncate accounts table: %v", err)
+	}
+}
+
+func truncateLedgerEntries(t *testing.T, testPool *pgxpool.Pool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := testPool.Exec(ctx, "TRUNCATE ledger_entries RESTART IDENTITY CASCADE")
+	if err != nil {
+		t.Fatalf("failed to truncate ledger_entries table: %v", err)
+	}
+}
+
+func truncateTransferEntries(t *testing.T, testPool *pgxpool.Pool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := testPool.Exec(ctx, "TRUNCATE transfers RESTART IDENTITY CASCADE")
+	if err != nil {
+		t.Fatalf("failed to truncate transfers table: %v", err)
 	}
 }
 
