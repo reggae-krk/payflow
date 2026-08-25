@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -15,7 +16,19 @@ import (
 type fakeService struct {
 	getBalanceCalled bool
 	balance          int64
-	err              error
+
+	depositCalled bool
+	gotDepositReq DepositRequest
+
+	withdrawCalled bool
+	gotWithdrawReq WithdrawRequest
+
+	transferCalled    bool
+	gotTransferReq    TransferRequest
+	gotIdempotencyKey string
+	transfer          Transfer
+
+	err error
 }
 
 func (s *fakeService) CreateAccount(ctx context.Context, userId int64, currency string) (*Account, error) {
@@ -28,15 +41,30 @@ func (s *fakeService) GetBalance(ctx context.Context, accountId, requestingUserI
 }
 
 func (s *fakeService) Deposit(ctx context.Context, req DepositRequest) error {
-	return nil
+	s.depositCalled = true
+	s.gotDepositReq = req
+	s.balance += req.AmountMinor
+	return s.err
 }
 
 func (s *fakeService) Withdraw(ctx context.Context, req WithdrawRequest) error {
-	return nil
+	s.withdrawCalled = true
+	s.gotWithdrawReq = req
+	return s.err
 }
 
 func (s *fakeService) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error) {
-	return nil, nil
+	s.transferCalled = true
+	s.gotTransferReq = req
+	s.gotIdempotencyKey = idempotencyKey
+	return &s.transfer, s.err
+}
+
+func newJSONRequest(method, url string, body any) *http.Request {
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(method, url, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	return req
 }
 
 func TestHandlerGetBalanceValidRequest(t *testing.T) {
@@ -111,4 +139,290 @@ func TestHandlerGetBalanceInvalidAccountId(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
 	assert.False(t, fakeSvc.getBalanceCalled)
+}
+
+func TestHandlerDepositValidRequest(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/deposit", map[string]any{
+		"amount_minor": 1500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Deposit(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	require.True(t, fakeSvc.depositCalled)
+
+	assert.Equal(t, int64(1500), fakeSvc.gotDepositReq.AmountMinor)
+	assert.Equal(t, int64(1), fakeSvc.gotDepositReq.AccountID)
+	assert.Equal(t, int64(100), fakeSvc.gotDepositReq.RequestingUserID)
+}
+
+func TestHandlerDepositMissingAuth(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/deposit", map[string]any{
+		"amount_minor": 1500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+
+	h.Deposit(c)
+
+	assert.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+	assert.False(t, fakeSvc.depositCalled)
+}
+
+func TestHandlerDepositInvalidAccountId(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/x/deposit", map[string]any{
+		"amount_minor": 1500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "not-a-number"}}
+	c.Set("user_id", int64(100))
+
+	h.Deposit(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.depositCalled)
+}
+
+func TestHandlerDepositInvalidBody(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/deposit", map[string]any{
+		"amount_minor": 0,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Deposit(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.depositCalled)
+}
+
+func TestHandlerDepositForbidden(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrForbidden}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/deposit", map[string]any{
+		"amount_minor": 1500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(999))
+
+	h.Deposit(c)
+
+	assert.Equal(t, http.StatusNotFound, responseRecorder.Code)
+}
+
+func TestHandlerWithdrawValidRequest(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/withdraw", map[string]any{
+		"amount_minor": 500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Withdraw(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	require.True(t, fakeSvc.withdrawCalled)
+	assert.Equal(t, int64(500), fakeSvc.gotWithdrawReq.AmountMinor)
+	assert.Equal(t, int64(1), fakeSvc.gotWithdrawReq.AccountID)
+	assert.Equal(t, int64(100), fakeSvc.gotWithdrawReq.RequestingUserID)
+}
+
+func TestHandlerWithdrawInsufficientFunds(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrInsufficientFunds}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/withdraw", map[string]any{
+		"amount_minor": 999999,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Withdraw(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+}
+
+func TestHandlerWithdrawForbidden(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrForbidden}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/withdraw", map[string]any{
+		"amount_minor": 500,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(999))
+
+	h.Withdraw(c)
+
+	assert.Equal(t, http.StatusNotFound, responseRecorder.Code)
+}
+
+func TestHandlerWithdrawInvalidBody(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/withdraw", map[string]any{})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Withdraw(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.withdrawCalled)
+}
+
+func TestHandlerTransferValidRequest(t *testing.T) {
+	fakeSvc := &fakeService{
+		transfer: Transfer{
+			Id:                   10,
+			SourceAccountID:      1,
+			DestinationAccountID: 2,
+			AmountMinor:          700,
+			Status:               "completed",
+		},
+	}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/transfer", map[string]any{
+		"amount_minor":           700,
+		"destination_account_id": 2,
+	})
+	c.Request.Header.Set("X-Idempotency-Key", "key-123")
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Transfer(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	require.True(t, fakeSvc.transferCalled)
+	assert.Equal(t, "key-123", fakeSvc.gotIdempotencyKey)
+	assert.Equal(t, int64(1), fakeSvc.gotTransferReq.SourceAccountID)
+	assert.Equal(t, int64(2), fakeSvc.gotTransferReq.DestinationAccountID)
+	assert.Equal(t, int64(700), fakeSvc.gotTransferReq.AmountMinor)
+	assert.Equal(t, int64(100), fakeSvc.gotTransferReq.RequestingUserID)
+}
+
+func TestHandlerTransferMissingIdempotencyKey(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/transfer", map[string]any{
+		"amount_minor":           700,
+		"destination_account_id": 2,
+	})
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Transfer(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.transferCalled)
+}
+
+func TestHandlerTransferForbidden(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrForbidden}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/transfer", map[string]any{
+		"amount_minor":           700,
+		"destination_account_id": 2,
+	})
+	c.Request.Header.Set("X-Idempotency-Key", "key-123")
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(999))
+
+	h.Transfer(c)
+
+	assert.Equal(t, http.StatusNotFound, responseRecorder.Code)
+}
+
+func TestHandlerTransferInsufficientFunds(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrInsufficientFunds}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/transfer", map[string]any{
+		"amount_minor":           999999,
+		"destination_account_id": 2,
+	})
+	c.Request.Header.Set("X-Idempotency-Key", "key-123")
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Transfer(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+}
+
+func TestHandlerTransferSameAccountReturnsBadRequest(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrInvalidTransfer}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = newJSONRequest(http.MethodPost, "/accounts/1/transfer", map[string]any{
+		"amount_minor":           700,
+		"destination_account_id": 1,
+	})
+	c.Request.Header.Set("X-Idempotency-Key", "key-123")
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.Transfer(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
 }

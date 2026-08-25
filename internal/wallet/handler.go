@@ -208,6 +208,14 @@ func (h *handler) Transfer(ctx *gin.Context) {
 			ctx.JSON(http.StatusConflict, gin.H{"error": "duplicate transfer"})
 			return
 		}
+		if errors.Is(err, ErrForbidden) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+		if errors.Is(err, ErrInsufficientFunds) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
+			return
+		}
 
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
