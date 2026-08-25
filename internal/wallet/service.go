@@ -18,6 +18,7 @@ type AccountService interface {
 	Deposit(ctx context.Context, req DepositRequest) error
 	Withdraw(ctx context.Context, req WithdrawRequest) error
 	Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error)
+	GetHistory(ctx context.Context, accountId, requestingUserId int64, limit, offset int) ([]*LedgerEntry, error)
 }
 
 type service struct {
@@ -281,4 +282,17 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	}
 
 	return transfer, nil
+}
+
+func (s *service) GetHistory(ctx context.Context, accountId, requestingUserId int64, limit, offset int) ([]*LedgerEntry, error) {
+	account, err := s.repo.GetByID(ctx, accountId)
+	if err != nil {
+		return nil, err
+	}
+	if requestingUserId != account.UserId {
+		return nil, ErrForbidden
+	}
+
+	ledgerRepo := NewLedgerRepository(s.pool)
+	return ledgerRepo.GetByAccountID(ctx, accountId, limit, offset)
 }

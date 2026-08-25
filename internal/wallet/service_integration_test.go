@@ -644,3 +644,55 @@ func TestServiceTransferNoDeadlockOnConcurrentOppositeTransfers(t *testing.T) {
 	assert.Equal(t, int64(1000), finalA.BalanceMinor)
 	assert.Equal(t, int64(1000), finalB.BalanceMinor)
 }
+
+func TestServiceGetHistoryIntegration(t *testing.T) {
+	t.Run("returns paginated history for account owner", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		service := NewTransactionalService(accountRepo, testPool)
+
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+		require.NoError(t, err)
+
+		require.NoError(t, service.Deposit(t.Context(), DepositRequest{
+			AccountID: account.Id, RequestingUserID: userId, AmountMinor: 500,
+		}))
+		require.NoError(t, service.Withdraw(t.Context(), WithdrawRequest{
+			AccountID: account.Id, RequestingUserID: userId, AmountMinor: 200,
+		}))
+
+		entries, err := service.GetHistory(t.Context(), account.Id, userId, 20, 0)
+
+		require.NoError(t, err)
+		require.Len(t, entries, 2)
+		assert.Equal(t, EntryDebit, entries[0].EntryType)
+		assert.Equal(t, int64(200), entries[0].AmountMinor)
+		assert.Equal(t, EntryCredit, entries[1].EntryType)
+		assert.Equal(t, int64(500), entries[1].AmountMinor)
+	})
+
+	t.Run("fails with ErrForbidden for non-owner", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		service := NewTransactionalService(accountRepo, testPool)
+
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+		require.NoError(t, err)
+
+		_, err = service.GetHistory(t.Context(), account.Id, 999999, 20, 0)
+
+		assert.ErrorIs(t, err, ErrForbidden)
+	})
+}

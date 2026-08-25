@@ -14,6 +14,7 @@ var ErrTransferNotFound = errors.New("transfer not found")
 
 type LedgerRepository interface {
 	Insert(ctx context.Context, entry LedgerEntry) error
+	GetByAccountID(ctx context.Context, accountID int64, limit, offset int) ([]*LedgerEntry, error)
 }
 
 type ledgerRepository struct {
@@ -54,4 +55,35 @@ func (repo *ledgerRepository) Insert(ctx context.Context, entry LedgerEntry) err
 	}
 
 	return nil
+}
+
+func (repo *ledgerRepository) GetByAccountID(ctx context.Context, accountID int64, limit, offset int) ([]*LedgerEntry, error) {
+	query := `
+		SELECT transfer_id, account_id, operation_type, entry_type, amount_minor
+		FROM ledger_entries
+		WHERE account_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := repo.db.Query(ctx, query, accountID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*LedgerEntry
+	for rows.Next() {
+		var entry LedgerEntry
+		if err := rows.Scan(&entry.TransferID, &entry.AccountID, &entry.OperationType, &entry.EntryType, &entry.AmountMinor); err != nil {
+			return nil, err
+		}
+		entries = append(entries, &entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServiceCreateAccountValid(t *testing.T) {
@@ -140,4 +141,16 @@ func TestServiceGetBalanceAccountNotFound(t *testing.T) {
 
 	assert.ErrorIs(t, err, ErrNoRows)
 	assert.EqualError(t, err, "no rows in result set")
+}
+
+func TestServiceGetHistoryForbiddenUnit(t *testing.T) {
+	repo := NewFakeAccountRepository()
+	service := NewService(repo)
+
+	account, err := repo.Create(context.Background(), 1, "PLN")
+	require.NoError(t, err)
+
+	_, err = service.GetHistory(context.Background(), account.Id, 999999, 20, 0)
+
+	assert.ErrorIs(t, err, ErrForbidden)
 }

@@ -28,6 +28,11 @@ type fakeService struct {
 	gotIdempotencyKey string
 	transfer          Transfer
 
+	historyCalled    bool
+	gotHistoryLimit  int
+	gotHistoryOffset int
+	historyEntries   []*LedgerEntry
+
 	err error
 }
 
@@ -58,6 +63,13 @@ func (s *fakeService) Transfer(ctx context.Context, req TransferRequest, idempot
 	s.gotTransferReq = req
 	s.gotIdempotencyKey = idempotencyKey
 	return &s.transfer, s.err
+}
+
+func (s *fakeService) GetHistory(ctx context.Context, accountId, requestingUserId int64, limit, offset int) ([]*LedgerEntry, error) {
+	s.historyCalled = true
+	s.gotHistoryLimit = limit
+	s.gotHistoryOffset = offset
+	return s.historyEntries, s.err
 }
 
 func newJSONRequest(method, url string, body any) *http.Request {
@@ -425,4 +437,112 @@ func TestHandlerTransferSameAccountReturnsBadRequest(t *testing.T) {
 	h.Transfer(c)
 
 	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+}
+
+func TestHandlerHistoryValidRequest(t *testing.T) {
+	fakeSvc := &fakeService{
+		historyEntries: []*LedgerEntry{
+			{AccountID: 1, OperationType: OperationDeposit, EntryType: EntryCredit, AmountMinor: 500},
+		},
+	}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/1/history?limit=10&offset=0", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	require.True(t, fakeSvc.historyCalled)
+	assert.Equal(t, 10, fakeSvc.gotHistoryLimit)
+	assert.Equal(t, 0, fakeSvc.gotHistoryOffset)
+}
+
+func TestHandlerHistoryDefaultsWhenQueryParamsMissing(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.Equal(t, 20, fakeSvc.gotHistoryLimit) // domyślny limit z handlera
+	assert.Equal(t, 0, fakeSvc.gotHistoryOffset)
+}
+
+func TestHandlerHistoryInvalidLimitFallsBackToDefault(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/1/history?limit=abc&offset=-5", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(100))
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.Equal(t, 20, fakeSvc.gotHistoryLimit)
+	assert.Equal(t, 0, fakeSvc.gotHistoryOffset)
+}
+
+func TestHandlerHistoryMissingAuth(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusUnauthorized, responseRecorder.Code)
+	assert.False(t, fakeSvc.historyCalled)
+}
+
+func TestHandlerHistoryInvalidAccountId(t *testing.T) {
+	fakeSvc := &fakeService{}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/x/history", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "not-a-number"}}
+	c.Set("user_id", int64(100))
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusBadRequest, responseRecorder.Code)
+	assert.False(t, fakeSvc.historyCalled)
+}
+
+func TestHandlerHistoryForbidden(t *testing.T) {
+	fakeSvc := &fakeService{err: ErrForbidden}
+	h := NewHandler(fakeSvc)
+
+	responseRecorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(responseRecorder)
+
+	c.Request = httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
+	c.Params = gin.Params{{Key: "accountId", Value: "1"}}
+	c.Set("user_id", int64(999))
+
+	h.GetHistory(c)
+
+	assert.Equal(t, http.StatusNotFound, responseRecorder.Code)
 }

@@ -546,3 +546,64 @@ func insertTestUser(t *testing.T, pool *pgxpool.Pool) int64 {
 
 	return userId
 }
+
+func TestLedgerRepositoryGetByAccountID(t *testing.T) {
+	t.Run("returns entries ordered by created_at descending, respecting limit and offset", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+		require.NoError(t, err)
+
+		ledgerRepo := NewLedgerRepository(testPool)
+
+		amounts := []int64{100, 200, 300}
+		for _, amount := range amounts {
+			entry := LedgerEntry{
+				TransferID:    nil,
+				AccountID:     account.Id,
+				OperationType: OperationDeposit,
+				EntryType:     EntryCredit,
+				AmountMinor:   amount,
+			}
+			require.NoError(t, ledgerRepo.Insert(t.Context(), entry))
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		page1, err := ledgerRepo.GetByAccountID(t.Context(), account.Id, 2, 0)
+		require.NoError(t, err)
+		require.Len(t, page1, 2)
+		assert.Equal(t, int64(300), page1[0].AmountMinor)
+		assert.Equal(t, int64(200), page1[1].AmountMinor)
+
+		page2, err := ledgerRepo.GetByAccountID(t.Context(), account.Id, 2, 2)
+		require.NoError(t, err)
+		require.Len(t, page2, 1)
+		assert.Equal(t, int64(100), page2[0].AmountMinor)
+	})
+
+	t.Run("returns empty slice for account with no entries", func(t *testing.T) {
+		t.Cleanup(func() {
+			truncateLedgerEntries(t, testPool)
+			truncateAccounts(t, testPool)
+			truncateUsers(t, testPool)
+		})
+
+		userId := insertTestUser(t, testPool)
+		accountRepo := NewAccountRepository(testPool)
+		account, err := accountRepo.Create(t.Context(), userId, PLN)
+		require.NoError(t, err)
+
+		ledgerRepo := NewLedgerRepository(testPool)
+
+		entries, err := ledgerRepo.GetByAccountID(t.Context(), account.Id, 20, 0)
+
+		require.NoError(t, err)
+		assert.Empty(t, entries)
+	})
+}

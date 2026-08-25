@@ -22,6 +22,7 @@ type fakeAccountHandler struct {
 	depositCalled    bool
 	withdrawCalled   bool
 	transferCalled   bool
+	historyCalled    bool
 }
 
 type fakeRegistrationHandler struct {
@@ -64,6 +65,11 @@ func (h *fakeRegistrationHandler) Register(c *gin.Context) {
 }
 
 func fakeHealthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *fakeAccountHandler) GetHistory(c *gin.Context) {
+	h.historyCalled = true
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -187,6 +193,21 @@ func TestRoutesTransferEndpoint(t *testing.T) {
 	assert.True(t, fa.transferCalled)
 }
 
+func TestRoutesHistoryEndpoint(t *testing.T) {
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+
+	responseRecorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
+	req.Header.Set("Authorization", validAuthHeader(t))
+	router.ServeHTTP(responseRecorder, req)
+
+	assert.Equal(t, http.StatusOK, responseRecorder.Code)
+	assert.True(t, fa.historyCalled)
+}
+
 func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -197,6 +218,7 @@ func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 		{"deposit", http.MethodPost, "/accounts/1/deposit"},
 		{"withdraw", http.MethodPost, "/accounts/1/withdraw"},
 		{"transfer", http.MethodPost, "/accounts/1/transfer"},
+		{"history", http.MethodGet, "/accounts/1/history"},
 	}
 
 	for _, tc := range cases {
@@ -215,6 +237,7 @@ func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 			assert.False(t, fa.depositCalled)
 			assert.False(t, fa.withdrawCalled)
 			assert.False(t, fa.transferCalled)
+			assert.False(t, fa.historyCalled)
 		})
 	}
 }

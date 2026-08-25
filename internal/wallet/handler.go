@@ -13,6 +13,7 @@ type AccountHandler interface {
 	Deposit(ctx *gin.Context)
 	Withdraw(ctx *gin.Context)
 	Transfer(ctx *gin.Context)
+	GetHistory(ctx *gin.Context)
 }
 
 type handler struct {
@@ -259,4 +260,37 @@ func accountIDAndUserIDFromContext(ctx *gin.Context) (int64, int64, *HandlerErro
 	}
 
 	return accountID, userID, nil
+}
+
+func (h *handler) GetHistory(ctx *gin.Context) {
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+	if hErr != nil {
+		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		return
+	}
+
+	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	if err != nil || limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	offset, err := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	entries, err := h.service.GetHistory(ctx, accountID, requestingUserID, limit, offset)
+	if err != nil {
+		if errors.Is(err, ErrForbidden) || errors.Is(err, ErrNoRows) {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"entries": entries,
+		"limit":   limit,
+		"offset":  offset,
+	})
 }
