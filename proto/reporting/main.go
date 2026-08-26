@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg := config.LoadDBConfig()
 	pool, err := pgxpool.New(context.Background(), cfg.ConnString())
 	if err != nil {
 		log.Fatalf("unable to connect to database: %v", err)
@@ -27,7 +27,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterReportingServiceServer(grpcServer, reporting.NewServer())
+	pb.RegisterReportingServiceServer(grpcServer, reporting.NewServer(pool))
 	reflection.Register(grpcServer)
 
 	log.Println("reporting grpc server listening on :50051")

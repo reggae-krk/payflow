@@ -5,13 +5,27 @@ import (
 	"os"
 )
 
-type Config struct {
+type DBConfig struct {
 	DBHost     string
 	DBPort     string
 	DBUser     string
 	DBPassword string
 	DBName     string
-	JWTSecret  string
+}
+
+type Config struct {
+	DBConfig
+	JWTSecret string
+}
+
+func LoadDBConfig() DBConfig {
+	return DBConfig{
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "payflow"),
+		DBPassword: getEnv("DB_PASSWORD", "payflow_dev_password"),
+		DBName:     getEnv("DB_NAME", "payflow"),
+	}
 }
 
 func Load() Config {
@@ -19,14 +33,9 @@ func Load() Config {
 	if jwtSecret == "" {
 		panic("JWT_SECRET is required")
 	}
-
 	return Config{
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "payflow"),
-		DBPassword: getEnv("DB_PASSWORD", "payflow_dev_password"),
-		DBName:     getEnv("DB_NAME", "payflow"),
-		JWTSecret:  getEnv("JWT_SECRET", jwtSecret),
+		DBConfig:  LoadDBConfig(),
+		JWTSecret: jwtSecret,
 	}
 }
 
@@ -37,7 +46,7 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func (c Config) ConnString() string {
+func (c DBConfig) ConnString() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName)
 }
