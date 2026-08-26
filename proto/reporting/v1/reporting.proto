@@ -1,0 +1,16 @@
+syntax = "proto3";
+package reporting.v1;
+option go_package = "github.com/reggae-krk/payflow/internal/reporting/pb";
+service ReportingService {
+  rpc GetAccountSummary(GetAccountSummaryRequest)
+      returns (GetAccountSummaryResponse);
+}
+message GetAccountSummaryRequest { int64 account_id = 1; }
+message GetAccountSummaryResponse {
+  int64 account_id = 1;
+  int64 current_balance_minor = 2;
+  int64 total_deposits_minor = 3;
+  int64 total_withdrawals_minor = 4;
+  int64 total_transfers_in_minor = 5;
+  int64 total_transfers_out_minor = 6;
+}
