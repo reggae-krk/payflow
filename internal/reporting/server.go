@@ -2,9 +2,13 @@ package reporting
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/proto/reporting/pb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type server struct {
@@ -37,6 +41,9 @@ func (s *server) GetAccountSummary(ctx context.Context, req *pb.GetAccountSummar
 	err = s.pool.QueryRow(ctx, "SELECT balance_minor FROM accounts WHERE id = $1", req.AccountId).Scan(&balance)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, status.Errorf(codes.NotFound, "account %d not found", req.AccountId)
+		}
 		return nil, err
 	}
 
