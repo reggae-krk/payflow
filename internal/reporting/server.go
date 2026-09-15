@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/reggae-krk/payflow/internal/db"
 	"github.com/reggae-krk/payflow/proto/reporting/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,10 +13,10 @@ import (
 
 type server struct {
 	pb.UnimplementedReportingServiceServer
-	pool *pgxpool.Pool
+	pool db.Querier
 }
 
-func NewServer(pool *pgxpool.Pool) *server {
+func NewServer(pool db.Querier) *server {
 	return &server{pool: pool}
 }
 
