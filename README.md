@@ -51,7 +51,7 @@ Client (curl/Postman)
 | Migrations | golang-migrate |
 | Auth | JWT (golang-jwt) + bcrypt |
 | Inter-service RPC | gRPC + Protocol Buffers |
-| Containerization | Docker + Docker Compose (database only) |
+| Containerization | Docker + Docker Compose |
 | Testing | standard `testing` + testcontainers-go |
 
 ## Data model (simplified ledger)
@@ -77,6 +77,27 @@ Client (curl/Postman)
 - Docker and Docker Compose
 - `golang-migrate` CLI
 - `grpcurl` (optional, for testing the gRPC service manually)
+
+### Quickstart with Docker Compose
+
+The entire stack (PostgreSQL, PayFlow HTTP API, and Reporting gRPC Service) can be started with a single command:
+
+```bash
+docker compose up --build
+```
+
+This command automatically:
+1. Starts PostgreSQL and initializes the database schema (`/docker-entrypoint-initdb.d`).
+2. Builds and launches the HTTP API (`:8080`).
+3. Builds and launches the Reporting Service (`:50051`).
+
+To verify API health:
+```bash
+curl http://localhost:8080/health
+# Response: {"status":"ok"}
+```
+
+### Manual setup (Local development)
 
 ### 1. Start the database
 

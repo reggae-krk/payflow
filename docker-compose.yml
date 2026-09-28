@@ -4,17 +4,56 @@ services:
         pull_policy: missing
         container_name: payflow-db
         environment:
-            POSTGRES_USER: payflow
-            POSTGRES_PASSWORD: payflow_dev_password
-            POSTGRES_DB: payflow
+            POSTGRES_USER: ${POSTGRES_USER:-payflow}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-payflow_dev_password}
+            POSTGRES_DB: ${POSTGRES_DB:-payflow}
         ports:
-            - "5432:5432"
+            - "${POSTGRES_PORT:-5432}:5432"
         volumes:
             - payflow_pgdata:/var/lib/postgresql/data
+            - ./migrations/000001_create_users_and_accounts.up.sql:/docker-entrypoint-initdb.d/01_create_users_and_accounts.sql:ro
+            - ./migrations/000002_create_transfers_and_ledger_tables.up.sql:/docker-entrypoint-initdb.d/02_create_transfers_and_ledger_tables.sql:ro
+            - ./migrations/000003_add_balance_non_negative_constraint.up.sql:/docker-entrypoint-initdb.d/03_add_balance_non_negative_constraint.sql:ro
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U payflow"]
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-payflow}"]
             interval: 5s
             timeout: 5s
             retries: 5
+
+    api:
+        build:
+            context: .
+            dockerfile: Dockerfile.api
+        container_name: payflow-api
+        ports:
+            - "${API_PORT:-8080}:8080"
+        environment:
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_USER: ${POSTGRES_USER:-payflow}
+            DB_PASSWORD: ${POSTGRES_PASSWORD:-payflow_dev_password}
+            DB_NAME: ${POSTGRES_DB:-payflow}
+            JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    reporting:
+        build:
+            context: .
+            dockerfile: Dockerfile.reporting
+        container_name: payflow-reporting
+        ports:
+            - "${REPORTING_PORT:-50051}:50051"
+        environment:
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_USER: ${POSTGRES_USER:-payflow}
+            DB_PASSWORD: ${POSTGRES_PASSWORD:-payflow_dev_password}
+            DB_NAME: ${POSTGRES_DB:-payflow}
+        depends_on:
+            postgres:
+                condition: service_healthy
+
 volumes:
     payflow_pgdata:
