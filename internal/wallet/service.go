@@ -3,7 +3,10 @@ package wallet
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/db"
 )
@@ -36,6 +39,29 @@ func NewTransactionalService(repo AccountRepository, pool *pgxpool.Pool) *servic
 	}
 }
 
+const rollbackTimeout = 5 * time.Second
+
+// finishTx is a deferred cleanup helper for transactions.
+// It rolls back the transaction using a fresh, short-lived context so the
+// rollback can still reach PostgreSQL even if the caller's context was cancelled.
+// After a successful Commit, Rollback returns pgx.ErrTxClosed — that is expected
+// and silently ignored. Any other rollback error is joined with the original
+// operation error so callers see both.
+func finishTx(tx pgx.Tx, opErr *error) {
+	rbCtx, cancel := context.WithTimeout(context.Background(), rollbackTimeout)
+	defer cancel()
+
+	rbErr := tx.Rollback(rbCtx)
+	switch {
+	case rbErr == nil:
+		// Rollback succeeded — transaction was not committed.
+	case errors.Is(rbErr, pgx.ErrTxClosed):
+		// Expected after a successful Commit; nothing to do.
+	default:
+		*opErr = errors.Join(*opErr, fmt.Errorf("rollback tx: %w", rbErr))
+	}
+}
+
 func (s *service) CreateAccount(ctx context.Context, userId int64, curr string) (*Account, error) {
 	currency, err := ParseCurrency(curr)
 
@@ -65,7 +91,7 @@ func (s *service) GetBalance(ctx context.Context, accountId, requestingUserId in
 	return account.BalanceMinor, nil
 }
 
-func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
+func (s *service) Deposit(ctx context.Context, req DepositRequest) (err error) {
 	if req.AmountMinor <= 0 {
 		return ErrInvalidAmount
 	}
@@ -76,7 +102,7 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer finishTx(tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -117,7 +143,7 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 	return nil
 }
 
-func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
+func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) (err error) {
 	if req.AmountMinor <= 0 {
 		return ErrInvalidAmount
 	}
@@ -128,7 +154,7 @@ func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer finishTx(tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -169,7 +195,7 @@ func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
 	return nil
 }
 
-func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error) {
+func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (transfer *Transfer, err error) {
 	if req.AmountMinor <= 0 {
 		return nil, ErrInvalidAmount
 	}
@@ -184,7 +210,7 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer finishTx(tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -231,7 +257,7 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	}
 
 	//create transfer
-	transfer, err := txTransferRepo.Create(ctx, req.SourceAccountID, req.DestinationAccountID, req.AmountMinor, idempotencyKey)
+	transfer, err = txTransferRepo.Create(ctx, req.SourceAccountID, req.DestinationAccountID, req.AmountMinor, idempotencyKey)
 
 	if err != nil {
 		if db.IsUniqueViolation(err) {
