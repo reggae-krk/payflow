@@ -65,7 +65,7 @@ func (s *service) GetBalance(ctx context.Context, accountId, requestingUserId in
 	return account.BalanceMinor, nil
 }
 
-func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
+func (s *service) Deposit(ctx context.Context, req DepositRequest) (err error) {
 	if req.AmountMinor <= 0 {
 		return ErrInvalidAmount
 	}
@@ -76,7 +76,7 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer db.FinishTx(ctx, tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -117,7 +117,7 @@ func (s *service) Deposit(ctx context.Context, req DepositRequest) error {
 	return nil
 }
 
-func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
+func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) (err error) {
 	if req.AmountMinor <= 0 {
 		return ErrInvalidAmount
 	}
@@ -128,7 +128,7 @@ func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer db.FinishTx(ctx, tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -169,7 +169,7 @@ func (s *service) Withdraw(ctx context.Context, req WithdrawRequest) error {
 	return nil
 }
 
-func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (*Transfer, error) {
+func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotencyKey string) (transfer *Transfer, err error) {
 	if req.AmountMinor <= 0 {
 		return nil, ErrInvalidAmount
 	}
@@ -184,7 +184,7 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer db.FinishTx(ctx, tx, &err)
 
 	txAccountRepo := NewAccountRepository(tx)
 	txLedgerRepo := NewLedgerRepository(tx)
@@ -231,7 +231,7 @@ func (s *service) Transfer(ctx context.Context, req TransferRequest, idempotency
 	}
 
 	//create transfer
-	transfer, err := txTransferRepo.Create(ctx, req.SourceAccountID, req.DestinationAccountID, req.AmountMinor, idempotencyKey)
+	transfer, err = txTransferRepo.Create(ctx, req.SourceAccountID, req.DestinationAccountID, req.AmountMinor, idempotencyKey)
 
 	if err != nil {
 		if db.IsUniqueViolation(err) {
