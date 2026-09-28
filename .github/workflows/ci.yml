@@ -37,6 +37,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
 
       - name: go test ./... -race -v
         run: go test ./... -race -v
