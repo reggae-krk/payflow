@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,16 +19,78 @@ import (
 	"github.com/reggae-krk/payflow/internal/wallet"
 )
 
+// shutdownTimeout must cover the slowest request (request deadline + FinishTx rollback)
+// and stay below the orchestrator's grace period (docker-compose stop_grace_period, k8s 30 s).
+const shutdownTimeout = 25 * time.Second
+
 func main() {
-	cfg := config.Load()
-	pool, err := pgxpool.New(context.Background(), cfg.ConnString())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// After the first signal, restore the default behaviour: a second Ctrl+C kills the process at once.
+	context.AfterFunc(ctx, stop)
 
-	if err != nil {
-		log.Fatalf("unable to connect to database: %v", err)
+	if err := run(ctx); err != nil {
+		log.Fatal(err)
 	}
+}
 
+func run(ctx context.Context) error {
+	cfg := config.Load()
+	pool, err := pgxpool.New(ctx, cfg.ConnString())
+	if err != nil {
+		return fmt.Errorf("create db pool: %w", err)
+	}
 	defer pool.Close()
 
+	// pgxpool.New doesn't connect; fail fast if the database is unreachable.
+	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelPing()
+	if err := pool.Ping(pingCtx); err != nil {
+		return fmt.Errorf("unable to connect to database: %w", err)
+	}
+
+	srv := &http.Server{
+		Handler:           router(pool),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
+
+	lis, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	log.Println("PayFlow API listening on :8080")
+	return serve(ctx, srv, lis, shutdownTimeout)
+}
+
+// serve runs srv on lis until ctx is cancelled, then shuts it down gracefully:
+// no new connections, in-flight requests get up to timeout to finish.
+func serve(ctx context.Context, srv *http.Server, lis net.Listener, timeout time.Duration) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Serve(lis)
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+	}
+
+	log.Println("shutting down: waiting for in-flight requests")
+	shCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	defer cancel()
+
+	if err := srv.Shutdown(shCtx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+	return nil
+}
+
+func router(pool *pgxpool.Pool) *gin.Engine {
 	usersRepo := users.NewUserRepository(pool)
 	usersService := users.NewService(usersRepo)
 	usersHandler := users.NewHandler(usersService)
@@ -41,9 +109,5 @@ func main() {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-
-	log.Println("PayFlow API listening on :8080")
-	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("server failed: %v", err)
-	}
+	return router
 }
