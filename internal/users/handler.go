@@ -9,7 +9,7 @@ import (
 )
 
 type UserHandler interface {
-	Login(ctx *gin.Context)
+	Login(c *gin.Context)
 }
 
 type handler struct {
@@ -25,29 +25,29 @@ type loginRequest struct {
 	Password string `json:"password" binding:"required,min=8"`
 }
 
-func (h *handler) Login(ctx *gin.Context) {
+func (h *handler) Login(c *gin.Context) {
 	var req loginRequest
 
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	user, err := h.service.Login(ctx, req.Email, req.Password)
+	user, err := h.service.Login(c.Request.Context(), req.Email, req.Password)
 
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	token, err := auth.GenerateToken(user.Id)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message": "User was successfully logged in",
 		"email":   user.Email,
 		"token":   token,
