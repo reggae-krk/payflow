@@ -25,6 +25,7 @@ services:
             context: .
             dockerfile: Dockerfile.api
         container_name: payflow-api
+        stop_grace_period: 30s # > shutdownTimeout (25s); Docker default is 10s
         ports:
             - "${API_PORT:-8080}:8080"
         environment:
@@ -43,6 +44,7 @@ services:
             context: .
             dockerfile: Dockerfile.reporting
         container_name: payflow-reporting
+        stop_grace_period: 30s # > shutdownTimeout (25s); Docker default is 10s
         ports:
             - "${REPORTING_PORT:-50051}:50051"
         environment:
