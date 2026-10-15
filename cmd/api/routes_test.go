@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -17,9 +18,11 @@ import (
 
 type fakeUserHandler struct {
 	registerCalled bool
+	loginCtx       context.Context
 }
 
 type fakeAccountHandler struct {
+	getBalanceCtx    context.Context
 	getBalanceCalled bool
 	depositCalled    bool
 	withdrawCalled   bool
@@ -29,6 +32,7 @@ type fakeAccountHandler struct {
 
 type fakeRegistrationHandler struct {
 	createdCalled bool
+	registerCtx   context.Context
 }
 
 func (h *fakeUserHandler) Register(c *gin.Context) {
@@ -38,11 +42,13 @@ func (h *fakeUserHandler) Register(c *gin.Context) {
 
 func (h *fakeUserHandler) Login(c *gin.Context) {
 	h.registerCalled = true
+	h.loginCtx = c.Request.Context()
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *fakeAccountHandler) GetBalance(c *gin.Context) {
 	h.getBalanceCalled = true
+	h.getBalanceCtx = c.Request.Context()
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -63,6 +69,7 @@ func (h *fakeAccountHandler) Transfer(c *gin.Context) {
 
 func (h *fakeRegistrationHandler) Register(c *gin.Context) {
 	h.createdCalled = true
+	h.registerCtx = c.Request.Context()
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -257,6 +264,71 @@ func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 			assert.False(t, fa.withdrawCalled)
 			assert.False(t, fa.transferCalled)
 			assert.False(t, fa.historyCalled)
+		})
+	}
+}
+
+func TestTimeoutMiddlewareSetsDeadlineAndCancelsAfterRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var handlerCtx context.Context
+	router := gin.New()
+	router.GET("/", timeoutMiddleware(300*time.Millisecond), func(c *gin.Context) {
+		handlerCtx = c.Request.Context()
+		c.Status(http.StatusOK)
+	})
+
+	start := time.Now()
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	require.NotNil(t, handlerCtx)
+	deadline, ok := handlerCtx.Deadline()
+	require.True(t, ok, "handler context has no deadline")
+	assert.WithinDuration(t, start.Add(300*time.Millisecond), deadline, 100*time.Millisecond)
+	// cancel runs when the middleware returns, so DB work started by the request can't outlive it.
+	assert.ErrorIs(t, handlerCtx.Err(), context.Canceled)
+}
+
+func TestRoutesUseTimeoutPerGroup(t *testing.T) {
+	timeouts := config.TimeoutConfig{Health: 1 * time.Second, LogReg: 2 * time.Second, Request: 3 * time.Second}
+	fu := &fakeUserHandler{}
+	fa := &fakeAccountHandler{}
+	fr := &fakeRegistrationHandler{}
+	var healthCtx context.Context
+	health := func(c *gin.Context) {
+		healthCtx = c.Request.Context()
+		c.Status(http.StatusOK)
+	}
+	router := SetupRouter(timeouts, fu, fa, fr, health)
+
+	serve := func(method, path string, authorized bool) {
+		req := httptest.NewRequest(method, path, strings.NewReader(`{}`))
+		if authorized {
+			req.Header.Set("Authorization", validAuthHeader(t))
+		}
+		router.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	serve(http.MethodGet, "/health", false)
+	serve(http.MethodPost, "/login", false)
+	serve(http.MethodPost, "/register", false)
+	serve(http.MethodGet, "/accounts/1/balance", true)
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		want time.Duration
+	}{
+		{"health", healthCtx, timeouts.Health},
+		{"login", fu.loginCtx, timeouts.LogReg},
+		{"register", fr.registerCtx, timeouts.LogReg},
+		{"balance", fa.getBalanceCtx, timeouts.Request},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NotNil(t, tc.ctx, "handler was not called")
+			deadline, ok := tc.ctx.Deadline()
+			require.True(t, ok, "no deadline")
+			// Checked right after the requests ran, so the time left is close to the configured timeout.
+			assert.InDelta(t, tc.want, time.Until(deadline), float64(500*time.Millisecond))
 		})
 	}
 }
