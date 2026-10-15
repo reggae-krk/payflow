@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -13,6 +15,8 @@ type DBConfig struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+	MaxConns   int32
+	MinConns   int32
 }
 
 type TimeoutConfig struct {
@@ -27,14 +31,31 @@ type Config struct {
 	JWTSecret string
 }
 
-func LoadDBConfig() DBConfig {
+// LoadDBConfig reads the connection settings and the pool size.
+// DB_MAX_CONNS and DB_MIN_CONNS are optional; the fallbacks match the pgxpool defaults.
+func LoadDBConfig() (DBConfig, error) {
+	maxConns, errMax := getEnvInt32("DB_MAX_CONNS", int32(max(4, runtime.NumCPU())))
+	minConns, errMin := getEnvInt32("DB_MIN_CONNS", 0)
+
+	if errMax != nil || errMin != nil {
+		return DBConfig{}, errors.Join(errMax, errMin)
+	}
+	if maxConns < 1 {
+		return DBConfig{}, fmt.Errorf("DB_MAX_CONNS=%d must be greater than 0", maxConns)
+	}
+	if minConns > maxConns {
+		return DBConfig{}, fmt.Errorf("DB_MIN_CONNS=%d must be <= DB_MAX_CONNS=%d", minConns, maxConns)
+	}
+
 	return DBConfig{
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
 		DBUser:     getEnv("DB_USER", "payflow"),
 		DBPassword: getEnv("DB_PASSWORD", "payflow_dev_password"),
 		DBName:     getEnv("DB_NAME", "payflow"),
-	}
+		MaxConns:   maxConns,
+		MinConns:   minConns,
+	}, nil
 }
 
 func LoadTimeoutConfig() (TimeoutConfig, error) {
@@ -62,20 +83,17 @@ func LoadJWTSecret() (string, error) {
 }
 
 func Load() (Config, error) {
-	jwtSecret, err := LoadJWTSecret()
+	dbCfg, errDB := LoadDBConfig()
+	jwtSecret, errJWT := LoadJWTSecret()
+	timeoutCfg, errTimeout := LoadTimeoutConfig()
 
-	if err != nil {
-		return Config{}, err
-	}
-
-	timeoutCfg, err := LoadTimeoutConfig()
-
-	if err != nil {
+	// Report every config problem at once, not one per restart.
+	if err := errors.Join(errDB, errJWT, errTimeout); err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		DBConfig:      LoadDBConfig(),
+		DBConfig:      dbCfg,
 		TimeoutConfig: timeoutCfg,
 		JWTSecret:     jwtSecret,
 	}, nil
@@ -101,6 +119,21 @@ func getEnvTime(key string) (time.Duration, error) {
 		return duration, nil
 	}
 	return 0, fmt.Errorf("%s not found in env vars", key)
+}
+
+func getEnvInt32(key string, fallback int32) (int32, error) {
+	if val, ok := os.LookupEnv(key); ok {
+		i, err := strconv.ParseInt(val, 10, 32)
+
+		if err != nil {
+			return 0, fmt.Errorf("%s has wrong format in env vars: %w", key, err)
+		}
+		if i < 0 {
+			return 0, fmt.Errorf("%s must not be negative", key)
+		}
+		return int32(i), nil
+	}
+	return fallback, nil
 }
 
 func (c DBConfig) ConnString() string {

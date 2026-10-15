@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/config"
+	"github.com/reggae-krk/payflow/internal/db"
 	"github.com/reggae-krk/payflow/internal/reporting"
 	"github.com/reggae-krk/payflow/proto/reporting/pb"
 	"google.golang.org/grpc"
@@ -36,14 +36,18 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	cfg := config.LoadDBConfig()
-	pool, err := pgxpool.New(ctx, cfg.ConnString())
+	cfg, err := config.LoadDBConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	pool, err := db.NewPool(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("create db pool: %w", err)
 	}
 	defer pool.Close()
 
-	// pgxpool.New doesn't connect; fail fast if the database is unreachable.
+	// The pool doesn't connect yet; fail fast if the database is unreachable.
 	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
 	defer cancelPing()
 	if err := pool.Ping(pingCtx); err != nil {

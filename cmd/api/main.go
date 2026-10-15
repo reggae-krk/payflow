@@ -45,13 +45,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("wrong timeouts: %w", err)
 	}
 
-	pool, err := pgxpool.New(ctx, cfg.ConnString())
+	pool, err := db.NewPool(ctx, cfg.DBConfig)
 	if err != nil {
 		return fmt.Errorf("create db pool: %w", err)
 	}
 	defer pool.Close()
 
-	// pgxpool.New doesn't connect; fail fast if the database is unreachable.
+	// The pool doesn't connect yet; fail fast if the database is unreachable.
 	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
 	defer cancelPing()
 	if err := pool.Ping(pingCtx); err != nil {
