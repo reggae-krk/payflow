@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/reggae-krk/payflow/internal/auth"
+	"github.com/reggae-krk/payflow/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,11 +75,20 @@ func (h *fakeAccountHandler) GetHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func getTimeoutCfg() config.TimeoutConfig {
+	return config.TimeoutConfig{
+		Health:  2 * time.Second,
+		LogReg:  2 * time.Second,
+		Request: 2 * time.Second,
+	}
+}
+
 func TestRoutesHealthEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -88,10 +99,11 @@ func TestRoutesHealthEndpoint(t *testing.T) {
 }
 
 func TestRoutesRegisterEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -104,10 +116,11 @@ func TestRoutesRegisterEndpoint(t *testing.T) {
 }
 
 func TestRoutesLoginEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -127,10 +140,11 @@ func validAuthHeader(t *testing.T) string {
 }
 
 func TestRoutesBalanceEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/accounts/1/balance", nil)
@@ -142,10 +156,11 @@ func TestRoutesBalanceEndpoint(t *testing.T) {
 }
 
 func TestRoutesDepositEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500}`
@@ -159,10 +174,11 @@ func TestRoutesDepositEndpoint(t *testing.T) {
 }
 
 func TestRoutesWithdrawEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500}`
@@ -176,10 +192,11 @@ func TestRoutesWithdrawEndpoint(t *testing.T) {
 }
 
 func TestRoutesTransferEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500, "destination_account_id": 2}`
@@ -194,10 +211,11 @@ func TestRoutesTransferEndpoint(t *testing.T) {
 }
 
 func TestRoutesHistoryEndpoint(t *testing.T) {
+	ft := getTimeoutCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
@@ -223,10 +241,11 @@ func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ft := getTimeoutCfg()
 			fu := &fakeUserHandler{}
 			fa := &fakeAccountHandler{}
 			fr := &fakeRegistrationHandler{}
-			router := SetupRouter(fu, fa, fr, fakeHealthHandler)
+			router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
 
 			responseRecorder := httptest.NewRecorder()
 			req := httptest.NewRequest(tc.method, tc.path, nil)

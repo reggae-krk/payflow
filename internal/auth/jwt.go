@@ -22,7 +22,12 @@ func GenerateToken(userID int64) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(config.Load().JWTSecret))
+	jwtSecret, err := config.LoadJWTSecret()
+
+	if err != nil {
+		return jwtSecret, err
+	}
+	return token.SignedString([]byte(jwtSecret))
 }
 
 func VerifyToken(token string) (int64, error) {
@@ -31,7 +36,12 @@ func VerifyToken(token string) (int64, error) {
 		if !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return []byte(config.Load().JWTSecret), nil
+		jwtSecret, err := config.LoadJWTSecret()
+
+		if err != nil {
+			return nil, err
+		}
+		return []byte(jwtSecret), nil
 	})
 
 	if err != nil {

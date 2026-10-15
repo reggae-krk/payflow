@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const rollbackTimeout = 5 * time.Second
+const RollbackTimeout = 5 * time.Second
 
 // FinishTx is a deferred cleanup helper for transactions.
 // It rolls back the transaction using a detached context (preserving original context values
@@ -27,7 +27,7 @@ func FinishTx(ctx context.Context, tx pgx.Tx, opErr *error) {
 		ctx = context.Background()
 	}
 
-	rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), RollbackTimeout)
 	defer cancel()
 
 	rbErr := tx.Rollback(rbCtx)
