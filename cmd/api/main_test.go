@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/reggae-krk/payflow/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -118,4 +119,65 @@ func TestServeReturnsServerErrorWithoutSignal(t *testing.T) {
 
 	err = serve(context.Background(), &http.Server{ReadHeaderTimeout: time.Second}, lis, time.Second)
 	assert.Error(t, err)
+}
+
+func TestTimeoutsCheck(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfgTimeout config.TimeoutConfig
+		want       string
+		timeout    time.Duration
+	}{
+		{"happy path",
+			config.TimeoutConfig{
+				Health:  2 * time.Second,
+				LogReg:  3 * time.Second,
+				Request: 5 * time.Second},
+			"",
+			shutdownTimeout,
+		},
+		{"time too long",
+			config.TimeoutConfig{
+				Health:  2 * time.Second,
+				LogReg:  15 * time.Second,
+				Request: 5 * time.Second},
+			"LOGREG_TIMEOUT",
+			shutdownTimeout,
+		},
+		{"time on edge",
+			config.TimeoutConfig{
+				Health:  2 * time.Second,
+				LogReg:  3 * time.Second,
+				Request: 10 * time.Second},
+			"REQUEST_TIMEOUT",
+			shutdownTimeout,
+		},
+		{"shutdownTimeout too short",
+			config.TimeoutConfig{
+				Health:  2 * time.Second,
+				LogReg:  4 * time.Second,
+				Request: 5 * time.Second},
+			"< shutdown timeout",
+			8 * time.Second,
+		},
+		{"shutdownTimeout on edge",
+			config.TimeoutConfig{
+				Health:  2 * time.Second,
+				LogReg:  3 * time.Second,
+				Request: 3 * time.Second},
+			"< shutdown timeout",
+			8 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := checkTimeouts(tt.cfgTimeout, writeTimeout, tt.timeout)
+			if tt.want == "" {
+				assert.NoError(t, got)
+			} else {
+				assert.ErrorContains(t, got, tt.want)
+			}
+		})
+	}
 }

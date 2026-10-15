@@ -1,6 +1,6 @@
 Project payflow {
   database_type: 'PostgreSQL'
-  Note: 'PayFlow MVP database schema. Monetary values are stored as BIGINT minor units.'
+  Note: 'PayFlow MVP database schema as originally designed (PF-3). Monetary values are stored as BIGINT minor units. The implemented schema differs in a few places: see the status table at the top of docs/erd.md and SCHEMA.md.'
 }
 
 Enum account_currency {

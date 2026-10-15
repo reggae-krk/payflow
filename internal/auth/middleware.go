@@ -7,28 +7,28 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RequireAuth(ctx *gin.Context) {
-	authHeader := ctx.GetHeader("Authorization")
+func RequireAuth(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
 
 	if authHeader == "" {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "not authorized"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "not authorized"})
 		return
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 
 	if token == authHeader {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
 		return
 	}
 
 	userId, err := VerifyToken(token)
 
 	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, err)
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return
 	}
 
-	ctx.Set("user_id", userId)
-	ctx.Next()
+	c.Set("user_id", userId)
+	c.Next()
 }

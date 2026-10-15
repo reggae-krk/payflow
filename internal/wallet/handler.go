@@ -9,11 +9,11 @@ import (
 )
 
 type AccountHandler interface {
-	GetBalance(ctx *gin.Context)
-	Deposit(ctx *gin.Context)
-	Withdraw(ctx *gin.Context)
-	Transfer(ctx *gin.Context)
-	GetHistory(ctx *gin.Context)
+	GetBalance(c *gin.Context)
+	Deposit(c *gin.Context)
+	Withdraw(c *gin.Context)
+	Transfer(c *gin.Context)
+	GetHistory(c *gin.Context)
 }
 
 type handler struct {
@@ -52,177 +52,177 @@ func NewHandler(service AccountService) *handler {
 	return &handler{service: service}
 }
 
-func (h *handler) GetBalance(ctx *gin.Context) {
-	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+func (h *handler) GetBalance(c *gin.Context) {
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(c)
 	if hErr != nil {
-		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		c.JSON(hErr.Code, gin.H{"error": hErr.Error()})
 		return
 	}
 
-	balance, err := h.service.GetBalance(ctx, accountID, requestingUserID)
+	balance, err := h.service.GetBalance(c.Request.Context(), accountID, requestingUserID)
 
 	if err != nil {
 		if errors.Is(err, ErrNoRows) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		}
 
 		if errors.Is(err, ErrForbidden) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message": "Balance was successfully obtained",
 		"balance": balance,
 	})
 }
 
-func (h *handler) Deposit(ctx *gin.Context) {
+func (h *handler) Deposit(c *gin.Context) {
 	var req DepositRequest
 
-	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(c)
 	if hErr != nil {
-		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		c.JSON(hErr.Code, gin.H{"error": hErr.Error()})
 		return
 	}
 
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	req.AccountID = accountID
 	req.RequestingUserID = requestingUserID
 
-	if req.AmountMinor < 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "deposit must be greather than 0"})
+	if req.AmountMinor <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "deposit must be greater than 0"})
 		return
 	}
 
-	if err := h.service.Deposit(ctx, req); err != nil {
+	if err := h.service.Deposit(c.Request.Context(), req); err != nil {
 		if errors.Is(err, ErrInvalidAmount) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrNoRows) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 		if errors.Is(err, ErrForbidden) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "deposit successful"})
+	c.JSON(http.StatusOK, gin.H{"message": "deposit successful"})
 }
 
-func (h *handler) Withdraw(ctx *gin.Context) {
+func (h *handler) Withdraw(c *gin.Context) {
 	var req WithdrawRequest
 
-	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(c)
 	if hErr != nil {
-		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		c.JSON(hErr.Code, gin.H{"error": hErr.Error()})
 		return
 	}
 
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	req.AccountID = accountID
 	req.RequestingUserID = requestingUserID
 
-	if err := h.service.Withdraw(ctx, req); err != nil {
+	if err := h.service.Withdraw(c.Request.Context(), req); err != nil {
 		if errors.Is(err, ErrInvalidAmount) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrNoRows) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 
 		if errors.Is(err, ErrForbidden) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 
 		if errors.Is(err, ErrInsufficientFunds) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
 			return
 		}
 
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "withdrawal successful"})
+	c.JSON(http.StatusOK, gin.H{"message": "withdrawal successful"})
 }
 
-func (h *handler) Transfer(ctx *gin.Context) {
+func (h *handler) Transfer(c *gin.Context) {
 	var req TransferRequest
 
-	idempotencyKey := ctx.GetHeader("X-Idempotency-Key")
+	idempotencyKey := c.GetHeader("X-Idempotency-Key")
 	if idempotencyKey == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "X-Idempotency-Key header required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Idempotency-Key header required"})
 		return
 	}
 
-	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(c)
 	if hErr != nil {
-		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		c.JSON(hErr.Code, gin.H{"error": hErr.Error()})
 		return
 	}
 
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	req.SourceAccountID = accountID
 	req.RequestingUserID = requestingUserID
 
-	transfer, err := h.service.Transfer(ctx, req, idempotencyKey)
+	transfer, err := h.service.Transfer(c.Request.Context(), req, idempotencyKey)
 	if err != nil {
 		if errors.Is(err, ErrInvalidAmount) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrNoRows) || errors.Is(err, ErrAccountNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 		if errors.Is(err, ErrInvalidTransfer) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrDuplicateTransfer) {
-			ctx.JSON(http.StatusConflict, gin.H{"error": "duplicate transfer"})
+			c.JSON(http.StatusConflict, gin.H{"error": "duplicate transfer"})
 			return
 		}
 		if errors.Is(err, ErrForbidden) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
 		if errors.Is(err, ErrInsufficientFunds) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient funds"})
 			return
 		}
 
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message":                "transfer successful",
 		"transfer_id":            transfer.Id,
 		"source_account_id":      transfer.SourceAccountID,
@@ -232,8 +232,8 @@ func (h *handler) Transfer(ctx *gin.Context) {
 	})
 }
 
-func userIDFromContext(ctx *gin.Context) (int64, bool) {
-	userID, ok := ctx.Get("user_id")
+func userIDFromContext(c *gin.Context) (int64, bool) {
+	userID, ok := c.Get("user_id")
 	if !ok {
 		return 0, false
 	}
@@ -242,8 +242,8 @@ func userIDFromContext(ctx *gin.Context) (int64, bool) {
 	return userIDInt, ok
 }
 
-func accountIDAndUserIDFromContext(ctx *gin.Context) (int64, int64, *HandlerError) {
-	accountID, err := strconv.ParseInt(ctx.Param("accountId"), 10, 64)
+func accountIDAndUserIDFromContext(c *gin.Context) (int64, int64, *HandlerError) {
+	accountID, err := strconv.ParseInt(c.Param("accountId"), 10, 64)
 	if err != nil {
 		return 0, 0, &HandlerError{
 			Code:    http.StatusBadRequest,
@@ -251,7 +251,7 @@ func accountIDAndUserIDFromContext(ctx *gin.Context) (int64, int64, *HandlerErro
 		}
 	}
 
-	userID, ok := userIDFromContext(ctx)
+	userID, ok := userIDFromContext(c)
 	if !ok {
 		return 0, 0, &HandlerError{
 			Code:    http.StatusUnauthorized,
@@ -262,33 +262,33 @@ func accountIDAndUserIDFromContext(ctx *gin.Context) (int64, int64, *HandlerErro
 	return accountID, userID, nil
 }
 
-func (h *handler) GetHistory(ctx *gin.Context) {
-	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(ctx)
+func (h *handler) GetHistory(c *gin.Context) {
+	accountID, requestingUserID, hErr := accountIDAndUserIDFromContext(c)
 	if hErr != nil {
-		ctx.JSON(hErr.Code, gin.H{"error": hErr.Error()})
+		c.JSON(hErr.Code, gin.H{"error": hErr.Error()})
 		return
 	}
 
-	limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "20"))
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	if err != nil || limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	offset, err := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	if err != nil || offset < 0 {
 		offset = 0
 	}
 
-	entries, err := h.service.GetHistory(ctx, accountID, requestingUserID, limit, offset)
+	entries, err := h.service.GetHistory(c.Request.Context(), accountID, requestingUserID, limit, offset)
 	if err != nil {
 		if errors.Is(err, ErrForbidden) || errors.Is(err, ErrNoRows) {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"entries": entries,
 		"limit":   limit,
 		"offset":  offset,

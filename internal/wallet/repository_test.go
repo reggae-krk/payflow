@@ -162,7 +162,7 @@ func TestAccountRepositoryGetByUserId(t *testing.T) {
 		assert.Empty(t, accounts)
 	})
 
-	t.Run("get get err for crating multiple accounts with valid userId (1 user, 1 account per currency)", func(t *testing.T) {
+	t.Run("get err for creating multiple accounts with valid userId (1 user, 1 account per currency)", func(t *testing.T) {
 		t.Cleanup(func() {
 			truncateAccounts(t, testPool)
 			truncateUsers(t, testPool)
@@ -349,7 +349,7 @@ func TestLedgerRepositoryInsert(t *testing.T) {
 		assert.ErrorIs(t, err, ErrInvalidLedgerEntry)
 	})
 
-	t.Run("fails with ErrInvalidLedgerEntry for wrong EntruType", func(t *testing.T) {
+	t.Run("fails with ErrInvalidLedgerEntry for wrong EntryType", func(t *testing.T) {
 		t.Cleanup(func() {
 			truncateLedgerEntries(t, testPool)
 		})

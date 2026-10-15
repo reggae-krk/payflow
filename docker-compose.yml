@@ -35,6 +35,9 @@ services:
             DB_PASSWORD: ${POSTGRES_PASSWORD:-payflow_dev_password}
             DB_NAME: ${POSTGRES_DB:-payflow}
             JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+            HEALTH_TIMEOUT: ${HEALTH_TIMEOUT:-2s}
+            LOGREG_TIMEOUT: ${LOGREG_TIMEOUT:-3s}
+            REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-5s}
         depends_on:
             postgres:
                 condition: service_healthy

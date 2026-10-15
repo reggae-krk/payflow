@@ -1,9 +1,12 @@
 package wallet
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -695,4 +698,86 @@ func TestServiceGetHistoryIntegration(t *testing.T) {
 
 		assert.ErrorIs(t, err, ErrForbidden)
 	})
+}
+
+// A request deadline that fires mid-transaction must roll back everything the transfer already wrote.
+// Another transaction holds an uncommitted transfer with the same idempotency key, so Transfer locks,
+// debits and credits both accounts, then blocks on the unique index until its context times out.
+func TestServiceTransferRollsBackOnDeadline(t *testing.T) {
+	t.Cleanup(func() {
+		truncateTransferEntries(t, testPool)
+		truncateLedgerEntries(t, testPool)
+		truncateAccounts(t, testPool)
+		truncateUsers(t, testPool)
+	})
+
+	userSource := insertTestUser(t, testPool)
+	userDestination := insertTestUser(t, testPool)
+	accountRepo := NewAccountRepository(testPool)
+	service := NewTransactionalService(accountRepo, testPool)
+
+	source, err := accountRepo.Create(t.Context(), userSource, PLN)
+	require.NoError(t, err)
+	destination, err := accountRepo.Create(t.Context(), userDestination, PLN)
+	require.NoError(t, err)
+	require.NoError(t, accountRepo.AdjustBalance(t.Context(), source.Id, 1500))
+
+	// The blocker's transfer uses two OTHER accounts: its foreign keys take FOR KEY SHARE locks on the
+	// accounts it references, which would stop Transfer at FOR UPDATE before it writes anything.
+	otherA, err := accountRepo.Create(t.Context(), insertTestUser(t, testPool), PLN)
+	require.NoError(t, err)
+	otherB, err := accountRepo.Create(t.Context(), insertTestUser(t, testPool), PLN)
+	require.NoError(t, err)
+
+	const key = "deadline-key"
+	blocker, err := testPool.Begin(t.Context())
+	require.NoError(t, err)
+	defer func() { _ = blocker.Rollback(context.Background()) }()
+	_, err = NewTransferRepository(blocker).Create(t.Context(), otherA.Id, otherB.Id, 1, key)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+
+	// Fail fast instead of hanging if Transfer ignores ctx: release the blocker after 5 s.
+	failSafe := time.AfterFunc(5*time.Second, func() { _ = blocker.Rollback(context.Background()) })
+	defer failSafe.Stop()
+
+	start := time.Now()
+	_, err = service.Transfer(ctx, TransferRequest{
+		SourceAccountID: source.Id, DestinationAccountID: destination.Id,
+		RequestingUserID: userSource, AmountMinor: 500,
+	}, key)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, context.DeadlineExceeded), "want DeadlineExceeded, got %v", err)
+	assert.Less(t, time.Since(start), 3*time.Second, "Transfer must stop at the deadline, not wait for the lock")
+
+	require.True(t, failSafe.Stop(), "Transfer ignored the deadline and waited for the lock")
+	require.NoError(t, blocker.Rollback(t.Context()))
+
+	// On a deadline pgx closes the connection, so FinishTx's Rollback fails with "conn closed" and Postgres
+	// aborts the transaction when it notices the disconnect, a moment after Transfer returns.
+	// The row locks must therefore be released soon, not necessarily at once.
+	check, err := testPool.Begin(t.Context())
+	require.NoError(t, err)
+	defer func() { _ = check.Rollback(context.Background()) }()
+	_, err = check.Exec(t.Context(), "SET LOCAL lock_timeout = '2s'")
+	require.NoError(t, err)
+	_, err = check.Exec(t.Context(), "SELECT id FROM accounts WHERE id IN ($1, $2) FOR UPDATE", source.Id, destination.Id)
+	require.NoError(t, err, "row locks still held: the transfer transaction was not rolled back")
+	require.NoError(t, check.Rollback(t.Context()))
+
+	updatedSource, err := accountRepo.GetByID(t.Context(), source.Id)
+	require.NoError(t, err)
+	updatedDestination, err := accountRepo.GetByID(t.Context(), destination.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1500), updatedSource.BalanceMinor)
+	assert.Equal(t, int64(0), updatedDestination.BalanceMinor)
+
+	var transfers, entries int
+	require.NoError(t, testPool.QueryRow(t.Context(), "SELECT count(*) FROM transfers").Scan(&transfers))
+	require.NoError(t, testPool.QueryRow(t.Context(), "SELECT count(*) FROM ledger_entries").Scan(&entries))
+	assert.Zero(t, transfers)
+	assert.Zero(t, entries)
 }

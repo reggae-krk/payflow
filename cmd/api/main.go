@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/reggae-krk/payflow/internal/app"
 	"github.com/reggae-krk/payflow/internal/config"
+	"github.com/reggae-krk/payflow/internal/db"
 	"github.com/reggae-krk/payflow/internal/users"
 	"github.com/reggae-krk/payflow/internal/wallet"
 )
@@ -22,6 +23,7 @@ import (
 // shutdownTimeout must cover the slowest request (request deadline + FinishTx rollback)
 // and stay below the orchestrator's grace period (docker-compose stop_grace_period, k8s 30 s).
 const shutdownTimeout = 25 * time.Second
+const writeTimeout = 15 * time.Second
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -35,14 +37,21 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	cfg := config.Load()
-	pool, err := pgxpool.New(ctx, cfg.ConnString())
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if err := checkTimeouts(cfg.TimeoutConfig, writeTimeout, shutdownTimeout); err != nil {
+		return fmt.Errorf("wrong timeouts: %w", err)
+	}
+
+	pool, err := db.NewPool(ctx, cfg.DBConfig)
 	if err != nil {
 		return fmt.Errorf("create db pool: %w", err)
 	}
 	defer pool.Close()
 
-	// pgxpool.New doesn't connect; fail fast if the database is unreachable.
+	// The pool doesn't connect yet; fail fast if the database is unreachable.
 	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
 	defer cancelPing()
 	if err := pool.Ping(pingCtx); err != nil {
@@ -50,10 +59,10 @@ func run(ctx context.Context) error {
 	}
 
 	srv := &http.Server{
-		Handler:           router(pool),
+		Handler:           router(pool, cfg.TimeoutConfig),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      15 * time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       30 * time.Second,
 	}
 
@@ -90,7 +99,7 @@ func serve(ctx context.Context, srv *http.Server, lis net.Listener, timeout time
 	return nil
 }
 
-func router(pool *pgxpool.Pool) *gin.Engine {
+func router(pool *pgxpool.Pool, cfg config.TimeoutConfig) *gin.Engine {
 	usersRepo := users.NewUserRepository(pool)
 	usersService := users.NewService(usersRepo)
 	usersHandler := users.NewHandler(usersService)
@@ -102,7 +111,7 @@ func router(pool *pgxpool.Pool) *gin.Engine {
 	registrationService := app.NewService(pool)
 	registrationHandler := app.NewHandler(registrationService)
 
-	router := SetupRouter(usersHandler, accountHandler, registrationHandler, func(c *gin.Context) {
+	router := SetupRouter(cfg, usersHandler, accountHandler, registrationHandler, func(c *gin.Context) {
 		if err := pool.Ping(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "db unavailable"})
 			return
@@ -110,4 +119,26 @@ func router(pool *pgxpool.Pool) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	return router
+}
+
+func checkTimeouts(cfg config.TimeoutConfig, writeTimeout, shutdownTimeout time.Duration) error {
+	checks := []struct {
+		name string
+		d    time.Duration
+	}{
+		{"HEALTH_TIMEOUT", cfg.Health},
+		{"LOGREG_TIMEOUT", cfg.LogReg},
+		{"REQUEST_TIMEOUT", cfg.Request},
+	}
+
+	for _, c := range checks {
+		if c.d+db.RollbackTimeout >= writeTimeout {
+			return fmt.Errorf("%s=%s + rollback %s must be < write timeout %s", c.name, c.d, db.RollbackTimeout, writeTimeout)
+		}
+		if c.d+db.RollbackTimeout >= shutdownTimeout {
+			return fmt.Errorf("%s=%s + rollback %s must be < shutdown timeout %s", c.name, c.d, db.RollbackTimeout, shutdownTimeout)
+		}
+	}
+
+	return nil
 }

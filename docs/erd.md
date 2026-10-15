@@ -1,5 +1,21 @@
 # PayFlow Database ERD
 
+> **Status:** this is the original design document (PF-3). The schema that actually runs is
+> defined by `migrations/*.up.sql` and summarised in [`SCHEMA.md`](../SCHEMA.md). The SQL blocks
+> below are the *recommended* definitions from the design, not the migrations. Differences:
+>
+> | Design (this document) | Implemented (migrations + code) |
+> |---|---|
+> | `transfers.id`, `ledger_entries.id`: `GENERATED ALWAYS AS IDENTITY` | `BIGSERIAL` |
+> | `transfers.idempotency_key` is `NOT NULL` | nullable (`TEXT UNIQUE`); the API always sends one |
+> | `transfers.status` only `completed` | `pending`, `completed`, `failed`; a transfer is inserted as `pending` and marked `completed` in the same transaction |
+> | `CHECK (source_account_id <> destination_account_id)` | not in the schema; checked in the service (`ErrInvalidTransfer`) |
+> | `ledger_entries.operation_type` `NOT NULL` with a `CHECK` | nullable, no `CHECK`; values set by the service |
+> | Indexes on `transfers (source/destination_account_id, created_at DESC)` | not created; `idx_ledger_entries_account_created_at` is ascending |
+> | Email normalised to lowercase and trimmed | not implemented yet |
+> | Reusing an idempotency key with different data → conflict | any reuse of a key → `409 Conflict` (no replay of the original transfer yet, PF-14.1) |
+> | — | an extra duplicate `CHECK (balance_minor >= 0)` named `balance_non_negative` (migration 000003) |
+
 ## 1. Purpose
 
 This document describes the initial database model for PayFlow, a transactional wallet and payments system.
