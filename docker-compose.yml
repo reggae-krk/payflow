@@ -14,6 +14,7 @@ services:
             - ./migrations/000001_create_users_and_accounts.up.sql:/docker-entrypoint-initdb.d/01_create_users_and_accounts.sql:ro
             - ./migrations/000002_create_transfers_and_ledger_tables.up.sql:/docker-entrypoint-initdb.d/02_create_transfers_and_ledger_tables.sql:ro
             - ./migrations/000003_add_balance_non_negative_constraint.up.sql:/docker-entrypoint-initdb.d/03_add_balance_non_negative_constraint.sql:ro
+            - ./migrations/000004_drop_balance_non_negative_constraint.up.sql:/docker-entrypoint-initdb.d/04_drop_balance_non_negative_constraint.sql:ro
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-payflow}"]
             interval: 5s

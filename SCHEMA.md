@@ -27,7 +27,6 @@
 - `accounts_balance_non_negative`: `CHECK (balance_minor >= 0)`
 - `accounts_currency_supported`: `CHECK (currency IN ('PLN'))`
 - `accounts_user_currency_unique`: `UNIQUE (user_id, currency)`
-- `balance_non_negative`: `CHECK (balance_minor >= 0)`
 
 ---
 

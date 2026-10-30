@@ -14,7 +14,6 @@
 > | Indexes on `transfers (source/destination_account_id, created_at DESC)` | not created; `idx_ledger_entries_account_created_at` is ascending |
 > | Email normalised to lowercase and trimmed | not implemented yet |
 > | Reusing an idempotency key with different data → conflict | any reuse of a key → `409 Conflict` (no replay of the original transfer yet, PF-14.1) |
-> | — | an extra duplicate `CHECK (balance_minor >= 0)` named `balance_non_negative` (migration 000003) |
 
 ## 1. Purpose
 
