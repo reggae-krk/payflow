@@ -59,7 +59,7 @@ func run(ctx context.Context) error {
 	}
 
 	srv := &http.Server{
-		Handler:           router(pool, cfg.TimeoutConfig),
+		Handler:           router(ctx, pool, cfg.TimeoutConfig, cfg.RateLimiterConfig),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      writeTimeout,
@@ -99,7 +99,7 @@ func serve(ctx context.Context, srv *http.Server, lis net.Listener, timeout time
 	return nil
 }
 
-func router(pool *pgxpool.Pool, cfg config.TimeoutConfig) *gin.Engine {
+func router(ctx context.Context, pool *pgxpool.Pool, cfgT config.TimeoutConfig, cfgR config.RateLimiterConfig) *gin.Engine {
 	usersRepo := users.NewUserRepository(pool)
 	usersService := users.NewService(usersRepo)
 	usersHandler := users.NewHandler(usersService)
@@ -111,7 +111,7 @@ func router(pool *pgxpool.Pool, cfg config.TimeoutConfig) *gin.Engine {
 	registrationService := app.NewService(pool)
 	registrationHandler := app.NewHandler(registrationService)
 
-	router := SetupRouter(cfg, usersHandler, accountHandler, registrationHandler, func(c *gin.Context) {
+	router := SetupRouter(ctx, cfgT, cfgR, usersHandler, accountHandler, registrationHandler, func(c *gin.Context) {
 		if err := pool.Ping(c.Request.Context()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "db unavailable"})
 			return

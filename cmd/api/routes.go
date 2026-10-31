@@ -12,20 +12,22 @@ import (
 	"github.com/reggae-krk/payflow/internal/wallet"
 )
 
-func SetupRouter(timeoutCfg config.TimeoutConfig, userHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler, healthHandler gin.HandlerFunc) *gin.Engine {
+func SetupRouter(ctx context.Context, timeoutCfg config.TimeoutConfig, rateLimiterCfg config.RateLimiterConfig, userHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler, healthHandler gin.HandlerFunc) *gin.Engine {
 	server := gin.Default()
+	_ = server.SetTrustedProxies(nil) // nil cannot fail
 
 	server.GET("/health", timeoutMiddleware(timeoutCfg.Health), healthHandler)
 
-	registerRoutes(server, timeoutCfg, userHandler, accountHandler, registrationHandler)
+	registerRoutes(ctx, server, timeoutCfg, rateLimiterCfg, userHandler, accountHandler, registrationHandler)
 
 	return server
 }
 
-func registerRoutes(server *gin.Engine, timeoutCfg config.TimeoutConfig, usersHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler) {
+func registerRoutes(ctx context.Context, server *gin.Engine, timeoutCfg config.TimeoutConfig, rateLimiterCfg config.RateLimiterConfig, usersHandler users.UserHandler, accountHandler wallet.AccountHandler, registrationHandler app.RegistrationHandler) {
 
 	regLogGroup := server.Group("/")
 	regLogGroup.Use(timeoutMiddleware(timeoutCfg.LogReg))
+	regLogGroup.Use(RateLimiter(ctx, rateLimiterCfg))
 
 	regLogGroup.POST("/register", registrationHandler.Register)
 	regLogGroup.POST("/login", usersHandler.Login)

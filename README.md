@@ -124,13 +124,14 @@ migrate -path migrations -database "postgres://payflow:payflow_dev_password@loca
 
 ### 3. Set required environment variables
 
-The API refuses to start without a JWT secret and the three request timeouts (see
-[Configuration](#configuration)); the Reporting Service only needs the database settings, which
-all have local defaults.
+The API refuses to start without a JWT secret, the three request timeouts and the rate limiter
+durations (see [Configuration](#configuration)); the Reporting Service only needs the database
+settings, which all have local defaults.
 
 ```bash
 export JWT_SECRET=your-local-dev-secret
 export HEALTH_TIMEOUT=2s LOGREG_TIMEOUT=3s REQUEST_TIMEOUT=5s
+export RATE_LIMIT_INTERVAL=12s RATE_LIMIT_CLEANUP_INTERVAL=1m RATE_LIMIT_IDLE_TTL=3m
 ```
 
 ### 4. Run the main API
@@ -161,6 +162,10 @@ problem at once; it never starts half-configured.
 | `HEALTH_TIMEOUT` | API | yes | — | Deadline for `GET /health`, e.g. `2s` |
 | `LOGREG_TIMEOUT` | API | yes | — | Deadline for `/register` and `/login` |
 | `REQUEST_TIMEOUT` | API | yes | — | Deadline for all authenticated `/accounts/...` endpoints |
+| `RATE_LIMIT_INTERVAL` | API | yes | — | One new token per interval for each client IP on `/register` and `/login`; `12s` = 5 per minute |
+| `RATE_LIMIT_BURST` | API | no | `3` | Bucket size: requests allowed at once before the interval applies; must be > 0 |
+| `RATE_LIMIT_CLEANUP_INTERVAL` | API | yes | — | How often idle IPs are removed from memory |
+| `RATE_LIMIT_IDLE_TTL` | API | yes | — | An IP unseen for this long is removed; keep it >= `INTERVAL × BURST` |
 | `DB_HOST` | both | no | `localhost` | |
 | `DB_PORT` | both | no | `5432` | |
 | `DB_USER` | both | no | `payflow` | |
@@ -169,8 +174,25 @@ problem at once; it never starts half-configured.
 | `DB_MAX_CONNS` | both | no | `max(4, CPUs)` | pgxpool default; must be > 0 |
 | `DB_MIN_CONNS` | both | no | `0` | pgxpool default; must be <= `DB_MAX_CONNS` |
 
-Timeouts are Go durations (`500ms`, `3s`, `1m`) and must be > 0. `docker-compose.yml` sets
-`HEALTH_TIMEOUT=2s`, `LOGREG_TIMEOUT=3s`, `REQUEST_TIMEOUT=5s` for the API container.
+Timeouts and rate limiter durations are Go durations (`500ms`, `3s`, `1m`) and must be > 0.
+`docker-compose.yml` sets `HEALTH_TIMEOUT=2s`, `LOGREG_TIMEOUT=3s`, `REQUEST_TIMEOUT=5s`,
+`RATE_LIMIT_INTERVAL=12s`, `RATE_LIMIT_BURST=5`, `RATE_LIMIT_CLEANUP_INTERVAL=1m` and
+`RATE_LIMIT_IDLE_TTL=3m` for the API container.
+
+## Rate limiting
+
+- `/register` and `/login` are limited **per client IP** with a token bucket
+  (`golang.org/x/time/rate`): `RATE_LIMIT_BURST` requests at once, then one more every
+  `RATE_LIMIT_INTERVAL`.
+- Over the limit the API returns `429 Too Many Requests` with a `Retry-After` header (seconds,
+  rounded up) and `{"error": "rate limit exceeded"}`.
+- A janitor goroutine removes IPs that were idle for `RATE_LIMIT_IDLE_TTL`, so the map does not
+  grow forever. It stops when the server shuts down.
+- The client IP is the TCP peer address. `X-Forwarded-For` is ignored (`SetTrustedProxies(nil)`),
+  because any client can set it and would get a fresh bucket per request. Behind a reverse proxy
+  or ingress, its address must be added as a trusted proxy.
+- The limiter lives in process memory: each API instance counts separately. A global limit would
+  need a shared counter (e.g. Redis).
 
 ## Timeouts and graceful shutdown
 
@@ -334,7 +356,8 @@ Includes both unit tests (fake `db.Querier`, no database required) and integrati
   `X-Idempotency-Key` returns `409 Conflict` instead of the original transfer (TODO PF-14.1).
 - Emails are not normalised (no lowercase/trim), so `User@x.com` and `user@x.com` can register
   as two different users.
-- No rate limiting on any endpoint.
+- Rate limiting covers only `/register` and `/login`, per IP and per instance. There is no
+  per-account (email) limit yet, so an attacker who rotates IPs is not stopped.
 - CI (GitHub Actions, `.github/workflows/ci.yml`) runs build, vet, `golangci-lint`, `go test -race`
   and `docker compose build` on pushes and PRs to `main`. The lint step is currently non-blocking
   (`continue-on-error: true`).

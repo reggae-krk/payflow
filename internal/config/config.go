@@ -25,9 +25,17 @@ type TimeoutConfig struct {
 	Request time.Duration
 }
 
+type RateLimiterConfig struct {
+	Interval    time.Duration
+	Burst       int32
+	CleanupTime time.Duration
+	IdleTTL     time.Duration
+}
+
 type Config struct {
 	DBConfig
 	TimeoutConfig
+	RateLimiterConfig
 	JWTSecret string
 }
 
@@ -74,6 +82,27 @@ func LoadTimeoutConfig() (TimeoutConfig, error) {
 	}, nil
 }
 
+func LoadRateLimiterConfig() (RateLimiterConfig, error) {
+	interval, errLimit := getEnvTime("RATE_LIMIT_INTERVAL")
+	burst, errBucket := getEnvInt32("RATE_LIMIT_BURST", 3)
+	cleanup, errCleanup := getEnvTime("RATE_LIMIT_CLEANUP_INTERVAL")
+	idleTTL, errIdle := getEnvTime("RATE_LIMIT_IDLE_TTL")
+
+	if errLimit != nil || errBucket != nil || errCleanup != nil || errIdle != nil {
+		return RateLimiterConfig{}, errors.Join(errLimit, errBucket, errCleanup, errIdle)
+	}
+
+	if burst <= 0 {
+		return RateLimiterConfig{}, fmt.Errorf("RATE_LIMIT_BURST=%d must be greater than 0", burst)
+	}
+
+	return RateLimiterConfig{Interval: interval,
+		Burst:       burst,
+		CleanupTime: cleanup,
+		IdleTTL:     idleTTL,
+	}, nil
+}
+
 func LoadJWTSecret() (string, error) {
 	jwtSecret := getEnv("JWT_SECRET", "")
 	if jwtSecret == "" {
@@ -86,16 +115,18 @@ func Load() (Config, error) {
 	dbCfg, errDB := LoadDBConfig()
 	jwtSecret, errJWT := LoadJWTSecret()
 	timeoutCfg, errTimeout := LoadTimeoutConfig()
+	rateLimiterCfg, errLimiter := LoadRateLimiterConfig()
 
 	// Report every config problem at once, not one per restart.
-	if err := errors.Join(errDB, errJWT, errTimeout); err != nil {
+	if err := errors.Join(errDB, errJWT, errTimeout, errLimiter); err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		DBConfig:      dbCfg,
-		TimeoutConfig: timeoutCfg,
-		JWTSecret:     jwtSecret,
+		DBConfig:          dbCfg,
+		TimeoutConfig:     timeoutCfg,
+		RateLimiterConfig: rateLimiterCfg,
+		JWTSecret:         jwtSecret,
 	}, nil
 }
 

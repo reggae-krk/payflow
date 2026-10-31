@@ -90,12 +90,22 @@ func getTimeoutCfg() config.TimeoutConfig {
 	}
 }
 
+func getLimiterCfg() config.RateLimiterConfig {
+	return config.RateLimiterConfig{
+		Interval:    2 * time.Second,
+		Burst:       5,
+		CleanupTime: 2 * time.Second,
+		IdleTTL:     2 * time.Second,
+	}
+}
+
 func TestRoutesHealthEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -107,10 +117,11 @@ func TestRoutesHealthEndpoint(t *testing.T) {
 
 func TestRoutesRegisterEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -124,10 +135,11 @@ func TestRoutesRegisterEndpoint(t *testing.T) {
 
 func TestRoutesLoginEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"email": "test@example.com", "password": "StrongP@ss1"}`
@@ -148,10 +160,11 @@ func validAuthHeader(t *testing.T) string {
 
 func TestRoutesBalanceEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/accounts/1/balance", nil)
@@ -164,10 +177,11 @@ func TestRoutesBalanceEndpoint(t *testing.T) {
 
 func TestRoutesDepositEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500}`
@@ -182,10 +196,11 @@ func TestRoutesDepositEndpoint(t *testing.T) {
 
 func TestRoutesWithdrawEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500}`
@@ -200,10 +215,11 @@ func TestRoutesWithdrawEndpoint(t *testing.T) {
 
 func TestRoutesTransferEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	body := `{"amount_minor": 500, "destination_account_id": 2}`
@@ -219,10 +235,11 @@ func TestRoutesTransferEndpoint(t *testing.T) {
 
 func TestRoutesHistoryEndpoint(t *testing.T) {
 	ft := getTimeoutCfg()
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
-	router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+	router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 	responseRecorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/accounts/1/history", nil)
@@ -249,10 +266,11 @@ func TestRoutesWalletEndpointsRequireAuth(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ft := getTimeoutCfg()
+			rl := getLimiterCfg()
 			fu := &fakeUserHandler{}
 			fa := &fakeAccountHandler{}
 			fr := &fakeRegistrationHandler{}
-			router := SetupRouter(ft, fu, fa, fr, fakeHealthHandler)
+			router := SetupRouter(t.Context(), ft, rl, fu, fa, fr, fakeHealthHandler)
 
 			responseRecorder := httptest.NewRecorder()
 			req := httptest.NewRequest(tc.method, tc.path, nil)
@@ -290,6 +308,7 @@ func TestTimeoutMiddlewareSetsDeadlineAndCancelsAfterRequest(t *testing.T) {
 
 func TestRoutesUseTimeoutPerGroup(t *testing.T) {
 	timeouts := config.TimeoutConfig{Health: 1 * time.Second, LogReg: 2 * time.Second, Request: 3 * time.Second}
+	rl := getLimiterCfg()
 	fu := &fakeUserHandler{}
 	fa := &fakeAccountHandler{}
 	fr := &fakeRegistrationHandler{}
@@ -298,7 +317,7 @@ func TestRoutesUseTimeoutPerGroup(t *testing.T) {
 		healthCtx = c.Request.Context()
 		c.Status(http.StatusOK)
 	}
-	router := SetupRouter(timeouts, fu, fa, fr, health)
+	router := SetupRouter(t.Context(), timeouts, rl, fu, fa, fr, health)
 
 	serve := func(method, path string, authorized bool) {
 		req := httptest.NewRequest(method, path, strings.NewReader(`{}`))

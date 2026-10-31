@@ -39,6 +39,10 @@ services:
             HEALTH_TIMEOUT: ${HEALTH_TIMEOUT:-2s}
             LOGREG_TIMEOUT: ${LOGREG_TIMEOUT:-3s}
             REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-5s}
+            RATE_LIMIT_INTERVAL: ${RATE_LIMIT_INTERVAL:-12s} # 1 token per 12s = 5 per minute
+            RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-5}
+            RATE_LIMIT_CLEANUP_INTERVAL: ${RATE_LIMIT_CLEANUP_INTERVAL:-1m}
+            RATE_LIMIT_IDLE_TTL: ${RATE_LIMIT_IDLE_TTL:-3m} # >= INTERVAL * BURST, or a removed IP gets a full bucket early
         depends_on:
             postgres:
                 condition: service_healthy
